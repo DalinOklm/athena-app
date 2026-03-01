@@ -89,73 +89,6 @@ const mockLocations = [
 
 
 
-const mockEmployees = [
-  {
-    id: 1,
-    name: "Sarah Johnson",
-    email: "sarah.j@acme.com",
-    department: "Engineering",
-    locationId: "1",
-    location: "Headquarters",
-    status: "checked-in",
-    checkInTime: "09:15 AM",
-    checkOutTime: "-",
-    totalHours: "In Progress",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 2,
-    name: "Michael Chen",
-    email: "michael.c@acme.com",
-    department: "Design",
-    locationId: "3",
-    location: "Remote",
-    status: "checked-out",
-    checkInTime: "08:45 AM",
-    checkOutTime: "05:30 PM",
-    totalHours: "8.75 hrs",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 3,
-    name: "Emily Rodriguez",
-    email: "emily.r@acme.com",
-    department: "Marketing",
-    locationId: "2",
-    location: "Branch Office",
-    status: "checked-in",
-    checkInTime: "09:30 AM",
-    checkOutTime: "-",
-    totalHours: "In Progress",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 4,
-    name: "David Kim",
-    email: "david.k@acme.com",
-    department: "Sales",
-    locationId: "1",
-    location: "Headquarters",
-    status: "late",
-    checkInTime: "10:15 AM",
-    checkOutTime: "-",
-    totalHours: "In Progress",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 5,
-    name: "Jessica Brown",
-    email: "jessica.b@acme.com",
-    department: "Engineering",
-    locationId: "3",
-    location: "Remote",
-    status: "checked-in",
-    checkInTime: "08:30 AM",
-    checkOutTime: "-",
-    totalHours: "In Progress",
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-]
 
 const mockAttendance = [
   {
@@ -239,6 +172,8 @@ export function AdminDashboard() {
   const router = useRouter();
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   console.log("🧠 Parent bulkUploadOpen state =", bulkUploadOpen);
+  const [employees, setEmployees] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [banner, setBanner] = useState<null | {
   message: string;
     type: "success" | "error";
@@ -269,6 +204,72 @@ useEffect(() => {
       console.error("ADMIN DASHBOARD /api/me FAILED", err);
     });
 }, []);
+
+
+
+useEffect(() => {
+  const fetchEmployees = async () => {
+    try {
+      console.log("🚀 STEP A1: Starting employee fetch...")
+
+      const res = await fetch("/api/admin/employees")
+
+      console.log("📡 STEP A2: Response received")
+      console.log("📡 Status:", res.status)
+      console.log("📡 OK?:", res.ok)
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error("❌ STEP A3: API returned error:", errorText)
+        return
+      }
+
+      const data = await res.json()
+
+      console.log("📦 STEP A4: Raw DB employees:", data)
+      console.log("📦 STEP A5: Type of data:", typeof data)
+      console.log("📦 STEP A6: Is Array?:", Array.isArray(data))
+      console.log("📦 STEP A7: Employee count:", data?.length)
+
+      const normalized = data.map((emp: any, index: number) => {
+        console.log(`🔎 STEP A8: Normalizing employee #${index + 1}`, emp)
+
+        const fullName = `${emp.first_name} ${emp.last_name}`
+
+        return {
+          id: emp.id,
+          name: fullName,
+          email: emp.email,
+          avatar: null,
+          department: emp.department,
+          location: "Headquarters", // temporary
+          locationId: "hq",
+          checkInTime: "-",
+          checkOutTime: "-",
+          totalHours: "-",
+          status: "inactive",
+        }
+      })
+
+      console.log("🔄 STEP A9: Normalized employees:", normalized)
+      console.log("🔄 STEP A10: Normalized count:", normalized.length)
+
+      setEmployees(normalized)
+
+      console.log("✅ STEP A11: setEmployees executed")
+
+    } catch (error) {
+      console.error("🔥 STEP A12: Failed to fetch employees:", error)
+    } finally {
+      console.log("🏁 STEP A13: Fetch process finished")
+      setLoading(false)
+    }
+  }
+
+  fetchEmployees()
+}, [])
+
+
 
   const handleLogout = async () => {
     await logout();          // 🔥 deletes cookie
@@ -309,7 +310,7 @@ useEffect(() => {
     },
   ]
 
-  const filteredEmployees = mockEmployees.filter((employee) => {
+  const filteredEmployees = employees.filter((employee) => {
     const matchesSearch =
       employee.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       employee.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -538,95 +539,151 @@ useEffect(() => {
                     <TableHead className="h-12 text-xs font-medium text-muted-foreground">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {filteredEmployees.map((employee) => (
-                    <TableRow key={employee.id} className="border-border/40 transition-colors hover:bg-muted/40">
-                      <TableCell className="px-8 py-4">
-                        <div className="flex items-center gap-4">
-                          <Avatar className="h-11 w-11 rounded-xl border border-border/60">
-                            <AvatarImage src={employee.avatar || "/placeholder.svg"} alt={employee.name} />
-                            <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-medium text-primary">
-                              {employee.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium leading-none text-foreground">{employee.name}</p>
-                            <p className="mt-1.5 text-sm text-muted-foreground">{employee.email}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm text-foreground">{employee.department}</span>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-foreground">{employee.location}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm font-medium text-foreground">{employee.checkInTime}</span>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm text-muted-foreground">{employee.checkOutTime}</span>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <span className="text-sm font-medium text-foreground">{employee.totalHours}</span>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <Badge className={getStatusColor(employee.status)}>{employee.status}</Badge>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-muted">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit Employee
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <div className="px-2 py-1.5">
-                              <Label className="text-xs text-muted-foreground">Assign Location</Label>
-                              <Select
-                                defaultValue={employee.locationId}
-                                onValueChange={(value) => handleAssignLocation(employee.id, value)}
-                              >
-                                <SelectTrigger className="mt-1.5 h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {mockLocations
-                                    .filter((loc) => loc.active)
-                                    .map((location) => (
-                                      <SelectItem key={location.id} value={location.id}>
-                                        {location.name}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remove
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
+               <TableBody>
+  {filteredEmployees.length === 0 ? (
+    <TableRow>
+      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+        No employees found
+      </TableCell>
+    </TableRow>
+  ) : (
+    filteredEmployees.map((employee) => (
+      <TableRow
+        key={employee.id}
+        className="border-border/40 transition-colors hover:bg-muted/40"
+      >
+        <TableCell className="px-8 py-4">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-11 w-11 rounded-xl border border-border/60">
+              <AvatarImage
+                src={employee.avatar || "/placeholder.svg"}
+                alt={employee.name || "Employee"}
+              />
+              <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-medium text-primary">
+                {employee.name
+                  ? employee.name
+                      .split(" ")
+                      .map((n: string) => n[0])
+                      .join("")
+                  : "?"}
+              </AvatarFallback>
+            </Avatar>
+
+            <div>
+              <p className="font-medium leading-none text-foreground">
+                {employee.name || "Unknown"}
+              </p>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                {employee.email || "-"}
+              </p>
+            </div>
+          </div>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <span className="text-sm text-foreground">
+            {employee.department || "-"}
+          </span>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-foreground">
+              {employee.location || "Headquarters"}
+            </span>
+          </div>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <span className="text-sm font-medium text-foreground">
+            {employee.checkInTime || "-"}
+          </span>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <span className="text-sm text-muted-foreground">
+            {employee.checkOutTime || "-"}
+          </span>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <span className="text-sm font-medium text-foreground">
+            {employee.totalHours || "-"}
+          </span>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <Badge className={getStatusColor(employee.status || "inactive")}>
+            {employee.status || "inactive"}
+          </Badge>
+        </TableCell>
+
+        <TableCell className="py-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 hover:bg-muted"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem>
+                <Eye className="mr-2 h-4 w-4" />
+                View Details
+              </DropdownMenuItem>
+
+              <DropdownMenuItem>
+                <Edit className="mr-2 h-4 w-4" />
+                Edit Employee
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <div className="px-2 py-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Assign Location
+                </Label>
+
+                <Select
+                  defaultValue={employee.locationId || "hq"}
+                  onValueChange={(value) =>
+                    handleAssignLocation(employee.id, value)
+                  }
+                >
+                  <SelectTrigger className="mt-1.5 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {mockLocations
+                      .filter((loc) => loc.active)
+                      .map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem className="text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remove
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </TableCell>
+      </TableRow>
+    ))
+  )}
+</TableBody>
               </Table>
             </div>
           </CardContent>
@@ -1050,7 +1107,7 @@ useEffect(() => {
                     <div className="flex items-center justify-between">
                       <Label className="text-base font-semibold text-foreground">Employee Management</Label>
                       <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-                        {mockEmployees.filter((emp) => emp.location === editingLocation.name).length} assigned
+                        {employees.filter((emp) => emp.location === editingLocation.name).length} assigned
                       </span>
                     </div>
 
@@ -1059,7 +1116,7 @@ useEffect(() => {
                       <div className="space-y-3">
                         <Label className="text-sm font-medium text-foreground">Assigned Here</Label>
                         <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-xl border-2 border-border/60 bg-slate-50/50 p-4">
-                          {mockEmployees
+                          {employees
                             .filter((emp) => emp.location === editingLocation.name)
                             .map((employee) => (
                               <div
@@ -1072,10 +1129,7 @@ useEffect(() => {
                                 }`}
                               >
                                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-sm font-semibold text-primary">
-                                  {employee.name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")}
+                                  {employee.name}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium text-foreground truncate">{employee.name}</p>
@@ -1085,7 +1139,7 @@ useEffect(() => {
                               </div>
                             ))}
 
-                          {mockEmployees.filter((emp) => emp.location === editingLocation.name).length === 0 && (
+                          {employees.filter((emp) => emp.location === editingLocation.name).length === 0 && (
                             <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-white/50">
                               <p className="text-sm text-muted-foreground px-4 text-center">
                                 No employees assigned yet
@@ -1102,7 +1156,7 @@ useEffect(() => {
                           {mockLocations
                             .filter((loc) => loc.name !== editingLocation.name)
                             .map((location) => {
-                              const employeesInLocation = mockEmployees.filter(
+                              const employeesInLocation = employees.filter(
                                 (emp) => emp.location === location.name,
                               ).length
 
