@@ -52,6 +52,7 @@ import { useRouter } from "next/navigation";
 import { logout } from "@/lib/auth/client";
 import { BulkEmployeeUploadDialog } from "@/components/admin/bulk-employee-upload-dialog";
 import { GlobalBanner } from "@/components/ui/global-banner";
+import LocationSchedulingEngine from "@/components/LocationSchedulingEngine";
 
 
 
@@ -174,6 +175,10 @@ export function AdminDashboard() {
   console.log("🧠 Parent bulkUploadOpen state =", bulkUploadOpen);
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null)
+const [startDatetime, setStartDatetime] = useState("")
+const [endDatetime, setEndDatetime] = useState("")
+const [expectedMinutes, setExpectedMinutes] = useState(60)
   const [banner, setBanner] = useState<null | {
   message: string;
     type: "success" | "error";
@@ -186,6 +191,30 @@ export function AdminDashboard() {
   name: string;
   slug: string;
 } | null>(null);
+
+const [schedules, setSchedules] = useState([])
+
+useEffect(() => {
+  const fetchSchedules = async () => {
+    try {
+      console.log("📡 FE-1: Fetching schedules")
+
+      const res = await fetch("/api/admin/location-schedules")
+      const data = await res.json()
+
+      console.log("📦 FE-2: Raw schedules:", data)
+
+      setSchedules(data)
+
+      console.log("✅ FE-3: Schedules set")
+
+    } catch (error) {
+      console.error("🔥 FE-4: Schedule fetch failed:", error)
+    }
+  }
+
+  fetchSchedules()
+}, [])
 
 
 useEffect(() => {
@@ -204,6 +233,60 @@ useEffect(() => {
       console.error("ADMIN DASHBOARD /api/me FAILED", err);
     });
 }, []);
+
+
+const handleScheduleSubmit = async () => {
+  try {
+    console.log("📡 Schedule submit triggered")
+
+    if (!selectedEmployee) {
+      alert("Please select an employee")
+      return
+    }
+
+    if (!editingLocation) {
+      alert("No location selected")
+      return
+    }
+
+    console.log("📦 Sending schedule payload:", {
+      employeeId: selectedEmployee,
+      locationId: editingLocation.id,
+      startDatetime,
+      endDatetime,
+      expectedMinutes
+    })
+
+    const res = await fetch("/api/admin/location-schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employeeId: selectedEmployee,
+        locationId: editingLocation.id,
+        startDatetime,
+        endDatetime,
+        expectedMinutes
+      })
+    })
+
+    const data = await res.json()
+
+    console.log("📥 API response:", data)
+
+    if (!res.ok) {
+      alert(data.error || "Schedule creation failed")
+      return
+    }
+
+    console.log("✅ Schedule created successfully")
+
+    // Optionally refresh schedules
+    //setSchedules((prev: any[]) => [...prev, data])
+
+  } catch (error) {
+    console.error("🔥 Schedule submit error:", error)
+  }
+}
 
 
 
@@ -270,6 +353,23 @@ useEffect(() => {
 }, [])
 
 
+
+const handleDeleteSchedule = async (id: number) => {
+  try {
+    console.log("🗑 Deleting schedule:", id)
+
+    await fetch(`/api/admin/location-schedules/${id}`, {
+      method: "DELETE"
+    })
+
+    setSchedules((prev) => prev.filter((s: any) => s.id !== id))
+
+    console.log("✅ Schedule deleted")
+
+  } catch (error) {
+    console.error("🔥 Delete failed:", error)
+  }
+}
 
   const handleLogout = async () => {
     await logout();          // 🔥 deletes cookie
@@ -360,6 +460,31 @@ useEffect(() => {
   const handleAssignLocation = (employeeId: number, locationId: string) => {
     console.log("[v0] Assigning employee", employeeId, "to location", locationId)
   }
+
+
+  
+
+const getEmployeesAssignedToLocation = (locationName: string) => {
+  console.log("📊 Checking assignments for location:", locationName)
+
+  const assigned = employees.filter((emp) =>
+    schedules.some(
+      (s: any) =>
+        s.employee_id === emp.id &&
+        s.location_name === locationName &&
+        new Date(s.end_datetime) > new Date()
+    )
+  )
+
+  console.log("📊 Assigned employees:", assigned)
+
+  return assigned
+}
+
+
+console.log("📦 schedules state:", schedules)
+console.log("📦 type:", typeof schedules)
+console.log("📦 isArray:", Array.isArray(schedules))
 
   return (
        <>
@@ -951,289 +1076,12 @@ useEffect(() => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Location Dialog */}
-      <Dialog open={!!editingLocation} onOpenChange={() => setEditingLocation(null)}>
-        <DialogContent className="max-w-[95vw] w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
-          {editingLocation && (
-            <>
-              <DialogHeader className="pb-6 border-b px-8 pt-6">
-                <DialogTitle className="text-2xl font-semibold">
-                  {editingLocation.id === "new" ? "Add New Location" : "Edit Location"}
-                </DialogTitle>
-                <DialogDescription className="text-base mt-1.5">
-                  Configure check-in location with interactive map preview and employee assignments
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="flex-1 overflow-y-auto px-8 py-8">
-                <div className="grid gap-10 lg:grid-cols-[1.2fr,1fr,1.3fr]">
-                  {/* Column 1: Map Preview - LARGE and PRIMARY */}
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <Label className="text-base font-semibold text-foreground">Location Preview</Label>
-                      <div className="rounded-2xl border-2 border-border/60 bg-slate-50 p-2">
-                        <div className="relative h-[600px] overflow-hidden rounded-xl bg-slate-200">
-                          {/* Map Placeholder with Center Pin */}
-                          <div className="absolute inset-0 bg-gradient-to-br from-blue-100 via-slate-100 to-green-100">
-                            {/* Grid lines for map feel */}
-                            <div className="absolute inset-0 opacity-20">
-                              <div className="h-full w-full bg-[linear-gradient(to_right,#64748b_1px,transparent_1px),linear-gradient(to_bottom,#64748b_1px,transparent_1px)] bg-[size:40px_40px]"></div>
-                            </div>
-                          </div>
-
-                          {/* Center Pin */}
-                          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
-                            <MapPin className="h-12 w-12 text-primary drop-shadow-lg" fill="currentColor" />
-                          </div>
-
-                          {/* Radius Overlay Circle - Dynamically scaled */}
-                          <div
-                            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-primary/40 bg-primary/10 transition-all duration-300 ease-out"
-                            style={{
-                              width: `${Math.min(radiusValue / 2, 450)}px`,
-                              height: `${Math.min(radiusValue / 2, 450)}px`,
-                            }}
-                          />
-
-                          {/* Location Info Overlay */}
-                          <div className="absolute bottom-6 left-6 right-6 rounded-xl border border-border/60 bg-white/95 p-4 shadow-xl backdrop-blur-sm">
-                            <p className="text-base font-semibold text-foreground">
-                              {editingLocation.name || "New Location"}
-                            </p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {editingLocation.address || "Set address to see location details"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Radius Slider - More Prominent */}
-                    <div className="space-y-4 rounded-2xl border-2 border-border/60 bg-white p-6 shadow-sm">
-                      <Label className="text-base font-semibold text-foreground">Check-in Radius</Label>
-                      <div className="space-y-5">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-4xl font-bold text-primary">{radiusValue}m</span>
-                          <span className="text-sm text-muted-foreground">Detection range</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="50"
-                          max="1000"
-                          step="10"
-                          value={radiusValue}
-                          onChange={(e) => setRadiusValue(Number(e.target.value))}
-                          className="h-3 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-primary/20 to-primary/40 [&::-webkit-slider-thumb]:h-7 [&::-webkit-slider-thumb]:w-7 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110"
-                        />
-                        <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>50m (Minimum)</span>
-                          <span>1000m (Maximum)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Column 2: Location Details - WELL SPACED */}
-                  <div className="space-y-6">
-                    <Label className="text-base font-semibold text-foreground">Location Details</Label>
-                    <div className="space-y-6">
-                      <div className="space-y-3">
-                        <Label htmlFor="location-name" className="text-sm font-medium text-foreground">
-                          Location Name
-                        </Label>
-                        <Input
-                          id="location-name"
-                          placeholder="e.g., Main Office, Downtown Branch"
-                          defaultValue={editingLocation.name}
-                          className="h-12 text-base"
-                        />
-                      </div>
-
-                      <div className="space-y-3">
-                        <Label htmlFor="location-address" className="text-sm font-medium text-foreground">
-                          Address
-                        </Label>
-                        <Input
-                          id="location-address"
-                          placeholder="123 Main St, City, State"
-                          defaultValue={editingLocation.address}
-                          className="h-12 text-base"
-                        />
-                      </div>
-
-                      <div className="grid gap-6 sm:grid-cols-2">
-                        <div className="space-y-3">
-                          <Label htmlFor="location-lat" className="text-sm font-medium text-foreground">
-                            Latitude
-                          </Label>
-                          <Input
-                            id="location-lat"
-                            placeholder="40.7128"
-                            defaultValue={editingLocation.lat}
-                            className="h-12 text-base"
-                          />
-                        </div>
-                        <div className="space-y-3">
-                          <Label htmlFor="location-lng" className="text-sm font-medium text-foreground">
-                            Longitude
-                          </Label>
-                          <Input
-                            id="location-lng"
-                            placeholder="-74.0060"
-                            defaultValue={editingLocation.lng}
-                            className="h-12 text-base"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 rounded-2xl border-2 border-border/60 bg-slate-50/80 p-6">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-2">
-                            <Label htmlFor="location-active" className="text-base font-semibold text-foreground">
-                              Active Status
-                            </Label>
-                            <p className="text-sm leading-relaxed text-muted-foreground">
-                              {editingLocation.active ? "Employees can check-in here" : "Check-ins are disabled"}
-                            </p>
-                          </div>
-                          <Switch id="location-active" defaultChecked={editingLocation.active} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Column 3: Employee Assignment - SIDE BY SIDE LAYOUT */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-base font-semibold text-foreground">Employee Management</Label>
-                      <span className="rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-                        {employees.filter((emp) => emp.location === editingLocation.name).length} assigned
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      {/* Assigned Employees */}
-                      <div className="space-y-3">
-                        <Label className="text-sm font-medium text-foreground">Assigned Here</Label>
-                        <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-xl border-2 border-border/60 bg-slate-50/50 p-4">
-                          {employees
-                            .filter((emp) => emp.location === editingLocation.name)
-                            .map((employee) => (
-                              <div
-                                key={employee.id}
-                                draggable
-                                onDragStart={() => setDraggedEmployee(employee.id)}
-                                onDragEnd={() => setDraggedEmployee(null)}
-                                className={`flex cursor-move items-center gap-3 rounded-lg border-2 border-border/60 bg-white p-4 shadow-sm transition-all hover:shadow-md hover:border-primary/40 ${
-                                  draggedEmployee === employee.id ? "scale-95 opacity-50" : ""
-                                }`}
-                              >
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-sm font-semibold text-primary">
-                                  {employee.name}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-foreground truncate">{employee.name}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{employee.department}</p>
-                                </div>
-                                <GripVertical className="h-5 w-5 shrink-0 text-muted-foreground" />
-                              </div>
-                            ))}
-
-                          {employees.filter((emp) => emp.location === editingLocation.name).length === 0 && (
-                            <div className="flex h-48 items-center justify-center rounded-lg border-2 border-dashed border-border/60 bg-white/50">
-                              <p className="text-sm text-muted-foreground px-4 text-center">
-                                No employees assigned yet
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Other Locations (Drop Zones) */}
-                      <div className="space-y-3">
-                        <Label className="text-sm font-medium text-foreground">Other Locations</Label>
-                        <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-xl border-2 border-border/60 bg-slate-50/50 p-4">
-                          {mockLocations
-                            .filter((loc) => loc.name !== editingLocation.name)
-                            .map((location) => {
-                              const employeesInLocation = employees.filter(
-                                (emp) => emp.location === location.name,
-                              ).length
-
-                              return (
-                                <div
-                                  key={location.id}
-                                  onDragOver={(e) => {
-                                    e.preventDefault()
-                                    setDropTargetLocation(location.name)
-                                  }}
-                                  onDragLeave={() => setDropTargetLocation(null)}
-                                  onDrop={(e) => {
-                                    e.preventDefault()
-                                    if (draggedEmployee) {
-                                      console.log(
-                                        `[v0] Assigning employee ${draggedEmployee} to location ${location.id}`,
-                                      )
-                                      setDropTargetLocation(null)
-                                      setDraggedEmployee(null)
-                                    }
-                                  }}
-                                  className={`flex items-center gap-3 rounded-lg border-2 p-4 transition-all ${
-                                    dropTargetLocation === location.name
-                                      ? "border-primary bg-primary/5 shadow-lg scale-[1.02]"
-                                      : "border-dashed border-border/60 bg-white/50"
-                                  }`}
-                                >
-                                  <div
-                                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                                      location.active
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-slate-100 text-slate-500"
-                                    }`}
-                                  >
-                                    <MapPin className="h-6 w-6" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate">{location.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {employeesInLocation} {employeesInLocation === 1 ? "employee" : "employees"}
-                                    </p>
-                                  </div>
-                                  {dropTargetLocation === location.name && (
-                                    <div className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-white shrink-0">
-                                      Drop here
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                        </div>
-                      </div>
-                    </div>
-                    {/* </CHANGE> */}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-4 border-t bg-slate-50/80 px-8 py-6">
-                <Button variant="outline" onClick={() => setEditingLocation(null)} className="h-12 px-8 text-base">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    console.log("[v0] Saving location with radius:", radiusValue)
-                    setEditingLocation(null)
-                  }}
-                  className="h-12 px-8 text-base"
-                >
-                  Save Location
-                </Button>
-              </div>
-              {/* </CHANGE> */}
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+    {/* Location Scheduling Engine Dialog */}
+    <Dialog open={!!editingLocation} onOpenChange={() => setEditingLocation(null)}>
+      <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+        <LocationSchedulingEngine />
+      </DialogContent>
+    </Dialog>
     <BulkEmployeeUploadDialog
       open={bulkUploadOpen}
       onOpenChange={(value) => {
