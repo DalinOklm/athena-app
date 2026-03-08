@@ -70,14 +70,12 @@ export function EmployeeDashboard() {
     };
 
 const parseDbLocalDateTime = (value: string) => {
-  console.log("🧩 PARSING DB DATETIME:", value);
 
   // remove the Z if present
   const normalized = value.replace("Z", "");
 
   const d = new Date(normalized);
 
-  console.log("🧩 PARSED DATE (LOCAL):", d.toString());
   return d;
 };
 
@@ -261,17 +259,6 @@ const loadAttendance = async () => {
 
 
   setAttendanceHistory(formatted);
-
-
-
-      console.log(
-      "🟡 CHECKING OPEN RECORDS:",
-      data.map((r: any) => ({
-        id: r.id,
-        check_in_time: r.check_in_time,
-        check_out_time: r.check_out_time,
-      }))
-    );
 
 
     const openRecord = data.find((r: any) => r.check_out_time === null);

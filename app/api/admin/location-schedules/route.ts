@@ -4,7 +4,6 @@ import { getAuthUser } from "@/lib/auth/server"
 
 export async function GET() {
   try {
-    console.log("📡 STEP LS-1: Fetch schedules API hit")
 
     const user = await getAuthUser()
     if (!user) {
@@ -13,7 +12,6 @@ export async function GET() {
 
     const db = await getDb()
 
-    console.log("📡 STEP LS-3: Fetching schedules from DB")
 
     const result = await db.request()
       .input("companyId", user.companyId)
@@ -25,7 +23,6 @@ export async function GET() {
         AND s.is_active = 1
       `)
 
-    console.log("✅ STEP LS-4: Schedules fetched:", result.recordset.length)
 
     return NextResponse.json(result.recordset)
 
@@ -38,7 +35,6 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    console.log("📥 STEP LS-POST-1: Creating schedule")
 
     const user = await getAuthUser()
     if (!user) {
@@ -55,8 +51,6 @@ export async function POST(req: Request) {
       expected_minutes
     } = body
 
-    console.log("📦 Incoming schedule data:", body)
-
     const db = await getDb()
 
     await db.request()
@@ -72,7 +66,6 @@ export async function POST(req: Request) {
         (@employee_id, @location_id, @start_datetime, @end_datetime, @expected_minutes, 1)
       `)
 
-    console.log("✅ STEP LS-POST-2: Schedule inserted")
 
     return NextResponse.json({ success: true })
 

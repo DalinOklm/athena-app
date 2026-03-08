@@ -40,14 +40,12 @@ export function BulkEmployeeUploadDialog({
     error?: string;
   }>(null);
 
-  console.log("🟡 BulkEmployeeUploadDialog mounted");
 
 
           // ================================
           // Bulk employee submit handler
           // ================================
       const handleSubmit = async () => {
-          console.log("🟢 Submit clicked");
 
           if (submitting) return;
 
@@ -62,14 +60,11 @@ export function BulkEmployeeUploadDialog({
 
             const data = await res.json();
 
-            console.log("📦 API response:", data);
 
             if (!res.ok || !data.success) {
-              console.log("❌ Upload failed at API level");
               throw new Error(data.error || "Bulk upload failed");
             }
 
-            console.log("✅ Upload successful");
 
             // 🔥 Close modal immediately
             onOpenChange(false);
@@ -104,8 +99,6 @@ export function BulkEmployeeUploadDialog({
 
 
 
-console.log("🧩 Dialog received open prop =", open);
-console.log("🧩 Dialog submitting state =", submitting);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -115,7 +108,6 @@ console.log("🧩 Dialog submitting state =", submitting);
       onEscapeKeyDown={submitting ? (e) => e.preventDefault() : undefined}
     >
        {(() => {
-    console.log("📦 DialogContent rendering");
         return null;
       })()}
       {/* 🔴 ADD THIS BLOCK */}
@@ -134,7 +126,6 @@ console.log("🧩 Dialog submitting state =", submitting);
             accept=".csv"
             onChange={(e) => {
               const f = e.target.files?.[0] || null;
-              console.log("📁 CSV selected:", f?.name);
               setFile(f);
             }}
           />
@@ -150,7 +141,6 @@ console.log("🧩 Dialog submitting state =", submitting);
           variant="outline"
           disabled={submitting || completed}
           onClick={() => {
-            console.log("🟠 Cancel clicked");
 
             // Reset everything manually
             setRows([]);
@@ -168,7 +158,6 @@ console.log("🧩 Dialog submitting state =", submitting);
   <Button
     disabled={!file}
     onClick={async () => {
-      console.log("🧪 Parse & Preview clicked");
 
       if (!file) return;
 
@@ -183,7 +172,6 @@ console.log("🧩 Dialog submitting state =", submitting);
         };
       });
 
-      console.log("🔍 Validation result:", validated);
       setRows(validated);
     }}
   >

@@ -12,10 +12,8 @@ export function GlobalBanner({
   onClose: () => void;
 }) {
   useEffect(() => {
-    console.log("📢 Banner mounted:", message);
 
     const timer = setTimeout(() => {
-      console.log("📢 Banner auto closing");
       onClose();
     }, 3000);
 

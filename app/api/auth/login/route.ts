@@ -13,13 +13,9 @@ export async function POST(req: Request) {
 
   const { email, password, companySlug } = await req.json();
 
-  console.log("🟡 LOGIN REQUEST BODY", { email, companySlug });
 
   
-  console.log("LOGIN API BODY", {
-    email,
-    companySlug,
-  });
+  
 
   if (!email || !password) {
     return NextResponse.json(
@@ -59,20 +55,9 @@ export async function POST(req: Request) {
 
   const user = result.recordset[0];
 
-    console.log("🟢 USER FROM DB", {
-    userId: user.user_id,
-    roleId: user.role_id,
-    roleCode: user.role_code,
-    companyId: user.company_id,
-    companySlugFromDb: user.company_slug,
-  });
+   
 
-  console.log("LOGIN USER FROM DB", {
-  id: user.id,
-  roleId: user.role_id,
-  roleCode: user.role_code,
-  companyId: user.company_id,
-});
+ 
 
   /**
    * 🔐 Verify password
@@ -86,11 +71,7 @@ export async function POST(req: Request) {
   }
 
 
-  console.log("COMPANY CHECK", {
-  userRole: user.role_code,
-  userCompanyId: user.company_id,
-  requestCompanySlug: companySlug,
-});
+ 
 
 
   /**
@@ -99,12 +80,7 @@ export async function POST(req: Request) {
    * =====================================================
    */
 
-   console.log("🟡 COMPANY ISOLATION CHECK", {
-    role: user.role_code,
-    userCompanyId: user.company_id,
-    dbCompanySlug: user.company_slug,
-    requestCompanySlug: companySlug,
-  });
+  
 
   // Super admins are global
   if (user.role_code !== "super_admin") {
@@ -134,7 +110,6 @@ export async function POST(req: Request) {
   companySlug: companySlug ?? null,
 };
 
-console.log("JWT PAYLOAD", jwtPayload);
 
 
   /**
@@ -175,7 +150,6 @@ console.log("JWT PAYLOAD", jwtPayload);
     maxAge: 60 * 60 * 24, // 1 day
   });
 
-  console.log("LOGIN SUCCESS – COOKIE SET");
 
   return response;
 }

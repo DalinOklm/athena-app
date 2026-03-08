@@ -32,8 +32,6 @@ export default function EmployeeRegistrationPage() {
   const params = useParams()
   const companySlug = params.company as string
 
-  console.log("🟢 EMPLOYEE REGISTRATION PAGE LOADED")
-  console.log("🏷️ companySlug from URL:", companySlug)
 
   useEffect(() => {
   console.log("🔵 useEffect fired for companySlug:", companySlug)
@@ -109,14 +107,10 @@ export default function EmployeeRegistrationPage() {
       const handleSubmit = async (e: React.FormEvent) => {
           e.preventDefault()
 
-          console.log("🟡 EMPLOYEE REGISTRATION SUBMIT")
 
-          // 🔒 companySlug comes ONLY from URL
-          console.log("🏷️ companySlug:", companySlug)
 
           // 🧪 Frontend safety check (optional but good)
           if (formData.password !== formData.confirmPassword) {
-            console.error("❌ Passwords do not match")
             alert("Passwords do not match")
             return
           }
@@ -136,7 +130,6 @@ export default function EmployeeRegistrationPage() {
             password: formData.password,
           }
 
-          console.log("📦 Payload sent to API:", payload)
 
           setIsSubmitting(true)
 
@@ -149,10 +142,8 @@ export default function EmployeeRegistrationPage() {
               body: JSON.stringify(payload),
             })
 
-            console.log("📡 Registration API status:", res.status)
 
             const data = await res.json()
-            console.log("📨 Registration API response:", data)
 
             if (!res.ok) {
               alert(data.error || "Registration failed")

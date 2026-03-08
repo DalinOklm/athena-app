@@ -1,16 +1,12 @@
-console.log("🔥 LOADING /api/companies/create ROUTE FILE");
+
 
 import { NextResponse } from "next/server";
-console.log("✅ Imported NextResponse");
 
 import bcrypt from "bcryptjs";
-console.log("✅ Imported bcrypt");
 
 import { getDb } from "@/lib/db";
-console.log("✅ Imported getDb");
 
 import sql from "mssql";
-console.log("✅ Imported mssql");
 
 // 🔧 Local slug generator (no dependency)
 function generateSlug(value: string) {
@@ -26,7 +22,6 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    console.log("📥 CREATE COMPANY PAYLOAD:", body);
 
     const {
       companyName,
@@ -39,17 +34,13 @@ export async function POST(req: Request) {
     } = body;
 
     const slug = generateSlug(companyName);
-    console.log("🔗 GENERATED SLUG:", slug);
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);
-    console.log("🔐 PASSWORD HASHED");
 
     const db = await getDb();
-    console.log("🧠 DB CONNECTION ACQUIRED");
 
     transaction = new sql.Transaction(db);
     await transaction.begin();
-    console.log("🔄 TRANSACTION STARTED");
 
     // ✅ INSERT COMPANY (companies.name EXISTS)
     const companyRequest = new sql.Request(transaction);
@@ -81,16 +72,11 @@ export async function POST(req: Request) {
       `);
 
     const companyId = companyResult.recordset[0].id;
-    console.log("🏢 COMPANY CREATED ID:", companyId);
 
     // ✅ INSERT USER (NO name column)
     // 6️⃣ Insert admin user
 // 6️⃣ Insert admin user
 try {
-  console.log("👤 PREPARING ADMIN INSERT");
-  console.log("👤 ADMIN EMAIL:", adminEmail);
-  console.log("👤 COMPANY ID:", companyId);
-  console.log("👤 ROLE (INT):", 2);
 
   const userRequest = new sql.Request(transaction);
 
@@ -114,18 +100,14 @@ try {
       )
     `);
 
-  console.log("✅ ADMIN USER INSERTED SUCCESSFULLY");
 
 } catch (userErr) {
-  console.error("❌ ADMIN USER INSERT FAILED");
-  console.error(userErr);
   throw userErr;
 }
 
 
 
     await transaction.commit();
-    console.log("✅ TRANSACTION COMMITTED");
 
     return NextResponse.json({
       success: true,
@@ -136,7 +118,6 @@ try {
   } catch (err) {
     if (transaction) {
       await transaction.rollback();
-      console.log("↩️ TRANSACTION ROLLED BACK");
     }
 
     console.error("❌ CREATE COMPANY FAILED", err);

@@ -172,7 +172,6 @@ export function AdminDashboard() {
   const [dropTargetLocation, setDropTargetLocation] = useState<string | null>(null)
   const router = useRouter();
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
-  console.log("🧠 Parent bulkUploadOpen state =", bulkUploadOpen);
   const [employees, setEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null)
@@ -184,7 +183,6 @@ const [expectedMinutes, setExpectedMinutes] = useState(60)
     type: "success" | "error";
   }>(null);
 
-  console.log("🧠 Banner state =", banner);
 
 
   const [company, setCompany] = useState<{
@@ -197,16 +195,13 @@ const [schedules, setSchedules] = useState([])
 useEffect(() => {
   const fetchSchedules = async () => {
     try {
-      console.log("📡 FE-1: Fetching schedules")
 
       const res = await fetch("/api/admin/location-schedules")
       const data = await res.json()
 
-      console.log("📦 FE-2: Raw schedules:", data)
 
       setSchedules(data)
 
-      console.log("✅ FE-3: Schedules set")
 
     } catch (error) {
       console.error("🔥 FE-4: Schedule fetch failed:", error)
@@ -237,7 +232,6 @@ useEffect(() => {
 
 const handleScheduleSubmit = async () => {
   try {
-    console.log("📡 Schedule submit triggered")
 
     if (!selectedEmployee) {
       alert("Please select an employee")
@@ -249,13 +243,6 @@ const handleScheduleSubmit = async () => {
       return
     }
 
-    console.log("📦 Sending schedule payload:", {
-      employeeId: selectedEmployee,
-      locationId: editingLocation.id,
-      startDatetime,
-      endDatetime,
-      expectedMinutes
-    })
 
     const res = await fetch("/api/admin/location-schedules", {
       method: "POST",
@@ -271,14 +258,12 @@ const handleScheduleSubmit = async () => {
 
     const data = await res.json()
 
-    console.log("📥 API response:", data)
 
     if (!res.ok) {
       alert(data.error || "Schedule creation failed")
       return
     }
 
-    console.log("✅ Schedule created successfully")
 
     // Optionally refresh schedules
     //setSchedules((prev: any[]) => [...prev, data])
@@ -293,13 +278,10 @@ const handleScheduleSubmit = async () => {
 useEffect(() => {
   const fetchEmployees = async () => {
     try {
-      console.log("🚀 STEP A1: Starting employee fetch...")
 
       const res = await fetch("/api/admin/employees")
 
-      console.log("📡 STEP A2: Response received")
-      console.log("📡 Status:", res.status)
-      console.log("📡 OK?:", res.ok)
+    
 
       if (!res.ok) {
         const errorText = await res.text()
@@ -309,13 +291,10 @@ useEffect(() => {
 
       const data = await res.json()
 
-      console.log("📦 STEP A4: Raw DB employees:", data)
-      console.log("📦 STEP A5: Type of data:", typeof data)
-      console.log("📦 STEP A6: Is Array?:", Array.isArray(data))
-      console.log("📦 STEP A7: Employee count:", data?.length)
+    
 
       const normalized = data.map((emp: any, index: number) => {
-        console.log(`🔎 STEP A8: Normalizing employee #${index + 1}`, emp)
+       
 
         const fullName = `${emp.first_name} ${emp.last_name}`
 
@@ -334,17 +313,14 @@ useEffect(() => {
         }
       })
 
-      console.log("🔄 STEP A9: Normalized employees:", normalized)
-      console.log("🔄 STEP A10: Normalized count:", normalized.length)
+
 
       setEmployees(normalized)
 
-      console.log("✅ STEP A11: setEmployees executed")
 
     } catch (error) {
       console.error("🔥 STEP A12: Failed to fetch employees:", error)
     } finally {
-      console.log("🏁 STEP A13: Fetch process finished")
       setLoading(false)
     }
   }
@@ -356,7 +332,6 @@ useEffect(() => {
 
 const handleDeleteSchedule = async (id: number) => {
   try {
-    console.log("🗑 Deleting schedule:", id)
 
     await fetch(`/api/admin/location-schedules/${id}`, {
       method: "DELETE"
@@ -364,7 +339,6 @@ const handleDeleteSchedule = async (id: number) => {
 
     setSchedules((prev) => prev.filter((s: any) => s.id !== id))
 
-    console.log("✅ Schedule deleted")
 
   } catch (error) {
     console.error("🔥 Delete failed:", error)
@@ -447,13 +421,6 @@ const handleDeleteSchedule = async (id: number) => {
   }
 
   const handleSaveCompanySettings = () => {
-    console.log("[v0] Saving company settings:", {
-      companyLogo,
-      primaryColor,
-      announcementText,
-      announcementBgColor,
-      announcementEnabled,
-    })
     setCompanySettingsOpen(false)
   }
 
@@ -465,7 +432,6 @@ const handleDeleteSchedule = async (id: number) => {
   
 
 const getEmployeesAssignedToLocation = (locationName: string) => {
-  console.log("📊 Checking assignments for location:", locationName)
 
   const assigned = employees.filter((emp) =>
     schedules.some(
@@ -476,15 +442,11 @@ const getEmployeesAssignedToLocation = (locationName: string) => {
     )
   )
 
-  console.log("📊 Assigned employees:", assigned)
 
   return assigned
 }
 
 
-console.log("📦 schedules state:", schedules)
-console.log("📦 type:", typeof schedules)
-console.log("📦 isArray:", Array.isArray(schedules))
 
   return (
        <>
@@ -493,7 +455,6 @@ console.log("📦 isArray:", Array.isArray(schedules))
         message={banner.message}
         type={banner.type}
         onClose={() => {
-          console.log("🟢 Banner manually closed");
           setBanner(null);
         }}
       />
@@ -589,7 +550,6 @@ console.log("📦 isArray:", Array.isArray(schedules))
             variant="outline"
             className="h-auto justify-start gap-3 px-4 py-3 shadow-sm bg-transparent"
            onClick={() => {
-              console.log("🟢 Bulk Add Employees button clicked");
               setBulkUploadOpen(true);
             }}
           >
@@ -1085,11 +1045,9 @@ console.log("📦 isArray:", Array.isArray(schedules))
     <BulkEmployeeUploadDialog
       open={bulkUploadOpen}
       onOpenChange={(value) => {
-        console.log("🔁 onOpenChange triggered with:", value);
         setBulkUploadOpen(value);
       }}
       onSuccess={(message) => {
-        console.log("✅ Parent received success callback");
         setBanner({ message, type: "success" });
       }}
     />

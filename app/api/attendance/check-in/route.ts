@@ -6,14 +6,12 @@ import sql from "mssql";
 
 export async function POST() {
   try {
-    console.log("🟡 CHECK-IN API HIT");
 
     // ✅ FIX: await cookies()
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
 
     if (!token) {
-      console.log("🔴 NO TOKEN");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -23,7 +21,6 @@ export async function POST() {
       roleCode: string;
     };
 
-    console.log("🟢 CHECK-IN PAYLOAD", payload);
 
     if (payload.roleCode !== "employee") {
       return NextResponse.json({ error: "Only employees can check in" }, { status: 403 });
@@ -31,11 +28,7 @@ export async function POST() {
 
     const db = await getDb();
 
-   // 🛑 PREVENT DOUBLE CHECK-IN
-console.log("🟡 CHECK-IN VALIDATION START", {
-  employeeId: payload.userId,
-  today: new Date().toISOString().slice(0, 10),
-});
+
 
 
 // 🛑 PREVENT DOUBLE CHECK-IN (ONE PER DAY, PERIOD)
@@ -49,26 +42,14 @@ const existing = await db
       AND CAST(check_in_time AS DATE) = CAST(GETDATE() AS DATE)
   `);
 
-console.log("🟡 CHECK-IN VALIDATION START", {
-  employeeId: payload.userId,
-  today: new Date().toISOString().slice(0, 10),
-});
 
 if (existing.recordset.length > 0) {
-  console.log("🔴 CHECK-IN BLOCKED — ALREADY CHECKED IN TODAY", {
-    employeeId: payload.userId,
-    record: existing.recordset[0],
-  });
 
   return Response.json(
     { error: "You have already checked in today" },
     { status: 409 }
   );
 }
-
-console.log("🟢 NO CHECK-IN FOUND FOR TODAY — ALLOWING CHECK-IN", {
-  employeeId: payload.userId,
-});
 
 
 
@@ -90,7 +71,6 @@ console.log("🟢 NO CHECK-IN FOUND FOR TODAY — ALLOWING CHECK-IN", {
     `);
 
 
-    console.log("🟢 CHECK-IN INSERTED");
 
     return NextResponse.json({ ok: true });
   } catch (err) {

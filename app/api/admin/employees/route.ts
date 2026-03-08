@@ -9,7 +9,6 @@ export async function GET() {
     const user = await getAuthUser();
 
     if (!user) {
-      console.log("❌ STEP 3: No authenticated user");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

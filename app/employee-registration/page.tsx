@@ -118,7 +118,6 @@ export default function EmployeeRegistrationPage() {
     await new Promise((resolve) => setTimeout(resolve, 1500))
 
     // In production, would redirect to Employee Dashboard or Login
-    console.log("Registration successful:", formData)
     alert("Account created successfully! Redirecting to login...")
     window.location.href = "/employee-login"
   }

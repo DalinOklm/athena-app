@@ -8,11 +8,9 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get("auth_token")?.value;
 
-  console.log("🧭 MIDDLEWARE HIT:", pathname);
 
   // 🔓 ALWAYS ALLOW API ROUTES (NO REDIRECTS)
   if (pathname.startsWith("/api/")) {
-    console.log("🟢 API ROUTE — SKIPPING MIDDLEWARE:", pathname);
     return NextResponse.next();
   }
 
@@ -31,20 +29,17 @@ export async function middleware(req: NextRequest) {
     // ✅ Platform login
     pathname === "/login"
   ) {
-    console.log("🟢 PUBLIC ROUTE — ALLOWED");
     return NextResponse.next();
   }
 
   // ❌ NO TOKEN — BLOCK
   if (!token) {
-    console.log("🔴 NO TOKEN — REDIRECT TO /login");
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
   try {
     const { payload } = await jwtVerify(token, secret);
 
-    console.log("🔐 TOKEN VERIFIED:", payload);
 
     const role = payload.roleCode as "super_admin" | "admin" | "employee";
     const companySlug = payload.companySlug as string;
@@ -55,9 +50,6 @@ export async function middleware(req: NextRequest) {
       const routeCompany = match[1];
       const routeType = match[2];
 
-      console.log("🏷️ Route company:", routeCompany);
-      console.log("🏷️ Token company:", companySlug);
-      console.log("👤 Role:", role);
 
       // 🚫 TENANT MISMATCH
       if (routeCompany !== companySlug) {

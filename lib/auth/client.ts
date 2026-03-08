@@ -3,7 +3,6 @@
  * Clears httpOnly auth cookie via API
  */
 export async function logout() {
-  console.log("🔴 LOGOUT CALLED");
   await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "include",

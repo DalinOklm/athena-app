@@ -639,12 +639,7 @@ export default function LocationSchedulingEngine() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Map Section - Left 2/3 */}
             <div className="lg:col-span-2">
-              <MapContainer
-                primaryLocation={primarySchedule.location.address ? primarySchedule.location : null}
-                checkpoints={checkpoints}
-                radius={primarySchedule.radius}
-                className="h-[400px] lg:h-[500px]"
-              />
+             <MapLocationSelector />
             </div>
 
             {/* Tabs Section - Right 1/3 */}

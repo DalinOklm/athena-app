@@ -10,9 +10,7 @@ export async function createEmployees({
   companyId: number;
   employees: any[];
 }) {
-  console.log("🗄️ CREATE EMPLOYEES START");
-  console.log("🏢 Company ID:", companyId);
-  console.log("👥 Employees received:", employees.length);
+
 
   const db = await getDb(); // ✅ YOUR DB CONNECTION
   const transaction = new sql.Transaction(db);
@@ -21,11 +19,9 @@ export async function createEmployees({
   let skipped = 0;
 
   try {
-    console.log("🔐 Starting SQL transaction");
     await transaction.begin();
 
     for (const emp of employees) {
-      console.log("👤 Processing employee:", emp.email);
 
       // ===============================
       // 1️⃣ Check duplicate per company
@@ -53,7 +49,6 @@ export async function createEmployees({
       const tempPassword = randomBytes(16).toString("hex");
       const passwordHash = await bcrypt.hash(tempPassword, 10);
 
-      console.log("🔑 Temp password generated for:", emp.email);
 
       // ===============================
       // 3️⃣ Insert employee
@@ -94,16 +89,10 @@ export async function createEmployees({
       `);
 
       inserted++;
-      console.log("✅ Inserted:", emp.email);
     }
 
     await transaction.commit();
-    console.log("🟢 TRANSACTION COMMITTED");
 
-    console.log("📊 INSERT SUMMARY", {
-      inserted,
-      skipped,
-    });
 
     return {
       inserted,

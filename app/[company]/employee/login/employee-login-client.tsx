@@ -52,14 +52,9 @@ export default function EmployeeLoginClient({ company }: EmployeeLoginClientProp
     try {
       // ✅ PASS company.slug to enforce isolation
       debugger;
-      console.log("LOGIN SUBMIT", {
-      email,
-      companySlug: company.slug,
-    });
 
       const result = await login(email, password, company.slug)
 
-      console.log("LOGIN RESULT", result);
 
       if (result.role !== "employee") {
         throw new Error("Employee access only")

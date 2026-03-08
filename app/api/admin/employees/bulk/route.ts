@@ -3,7 +3,6 @@ import { createEmployees } from "@/lib/employees/create-employees";
 import { getUserFromRequest } from "@/lib/auth";
 
 export async function POST(req: Request) {
-  console.log("🔥 BULK EMPLOYEE ROUTE HIT");
 
   try {
     // =====================================================
@@ -21,7 +20,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("🏢 Company ID resolved from token:", companyId);
 
     // =====================================================
     // 📦 Parse request body
@@ -37,7 +35,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("📦 Incoming employees:", employees.length);
 
     // =====================================================
     // ✅ Filter + normalize valid employees only
@@ -46,7 +43,6 @@ export async function POST(req: Request) {
       .filter((e: any) => e.valid === true)
       .map((e: any) => e.data);
 
-    console.log("✅ Valid employees:", validEmployees.length);
 
     if (validEmployees.length === 0) {
       return NextResponse.json({
@@ -65,7 +61,6 @@ export async function POST(req: Request) {
       employees: validEmployees,
     });
 
-    console.log("🗄️ DB INSERT RESULT:", result);
 
     // =====================================================
     // ✅ Success response

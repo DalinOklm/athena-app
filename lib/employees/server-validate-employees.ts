@@ -12,8 +12,7 @@ export function validateEmployeesServerSide(
   existingEmails: Set<string>,
   existingEmployeeIds: Set<string>
 ) {
-  console.log("🛡️ SERVER VALIDATION STARTED");
-  console.log("📦 Incoming employees:", employees.length);
+ 
 
   const accepted: EmployeePayload[] = [];
   const rejected: {
@@ -25,7 +24,6 @@ export function validateEmployeesServerSide(
   employees.forEach((emp, index) => {
     const reasons: string[] = [];
 
-    console.log(`🔍 Validating row ${index + 1}`, emp);
 
     // Required fields
     if (!emp.firstName) reasons.push("Missing first name");
@@ -55,15 +53,10 @@ export function validateEmployeesServerSide(
         reasons,
       });
     } else {
-      console.log(`✅ Row ${index + 1} accepted`);
       accepted.push(emp);
     }
   });
 
-  console.log("📊 VALIDATION SUMMARY", {
-    accepted: accepted.length,
-    rejected: rejected.length,
-  });
 
   return { accepted, rejected };
 }

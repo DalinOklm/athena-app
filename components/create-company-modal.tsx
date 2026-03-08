@@ -40,20 +40,8 @@ const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setIsSubmitting(true);
 
-  console.log("🟡 CREATE COMPANY: submit clicked");
-  console.log("📦 Payload to API:", {
-    companyName: formData.companyName,
-    industry: formData.industry,
-    address: formData.address,
-    expectedEmployees: formData.expectedEmployees,
-    brandColor: formData.brandColor,
-    adminName: "Admin",
-    adminEmail: formData.adminUsername,
-    adminPassword: "********", // never log raw passwords
-  });
 
   try {
-    console.log("🚀 Sending POST /api/companies/create");
 
     const res = await fetch("/api/companies/create", {
       method: "POST",
@@ -73,10 +61,8 @@ const handleSubmit = async (e: React.FormEvent) => {
       }),
     });
 
-    console.log("📡 API response status:", res.status);
 
     const data = await res.json();
-    console.log("📨 API response body:", data);
 
     // ❌ ERROR (duplicate name, validation, auth, etc.)
     if (!res.ok) {
@@ -91,10 +77,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       return;
     }
 
-    // ✅ SUCCESS
-    console.log("✅ COMPANY CREATED SUCCESSFULLY");
-    console.log("🏷 Company slug:", data.companySlug);
-    console.log("🔗 Admin login URL:", data.adminLoginUrl);
+   
 
     onNotification?.({
       type: "success",
@@ -114,7 +97,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       brandColor: "#4F46E5",
     });
 
-    console.log("🔄 Form reset & modal closed");
   } catch (err: any) {
     console.error("🔥 CREATE COMPANY EXCEPTION:", err);
 

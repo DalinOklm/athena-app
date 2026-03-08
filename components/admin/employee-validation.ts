@@ -4,7 +4,6 @@ export function validateEmployeeRow(row: any) {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  console.log("🧪 Validating row:", row);
 
   // REQUIRED FIELDS
   if (!row.firstName) errors.push("Missing first name");
@@ -18,12 +17,7 @@ export function validateEmployeeRow(row: any) {
 
   const valid = errors.length === 0;
 
-  console.log("✅ Validation result:", {
-    valid,
-    errors,
-    warnings,
-  });
-
+ 
   return {
     valid,
     errors,

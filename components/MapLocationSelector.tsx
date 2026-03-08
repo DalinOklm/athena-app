@@ -1,83 +1,110 @@
 "use client"
 
-import { GoogleMap, LoadScript, Autocomplete, Marker, Circle } from "@react-google-maps/api"
-import { useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import Script from "next/script"
 
-const containerStyle = {
-  width: "100%",
-  height: "500px",
+declare global {
+  interface Window {
+    google: any
+  }
 }
 
-export default function MapLocationSelector({ onLocationChange }: any) {
-  const [center, setCenter] = useState({ lat: -26.2041, lng: 28.0473 })
-  const [radius, setRadius] = useState(1000)
-  const autocompleteRef = useRef<any>(null)
+export default function MapLocationSelector() {
+  const mapRef = useRef<HTMLDivElement | null>(null)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const [googleLoaded, setGoogleLoaded] = useState(false)
 
-  const handlePlaceChanged = () => {
-    const place = autocompleteRef.current.getPlace()
+  console.log("🔑 ENV KEY:", process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY)
 
-    if (place.geometry) {
-      const lat = place.geometry.location.lat()
-      const lng = place.geometry.location.lng()
+  useEffect(() => {
+    console.log("🧠 useEffect triggered")
+    console.log("📌 googleLoaded:", googleLoaded)
+    console.log("📌 window.google:", typeof window !== "undefined" ? window.google : "window undefined")
+    console.log("📌 mapRef.current:", mapRef.current)
 
-      const newCenter = { lat, lng }
-      setCenter(newCenter)
-
-      onLocationChange({
-        address: place.formatted_address,
-        lat,
-        lng,
-        radius,
-      })
+    if (!googleLoaded) {
+      console.log("⏳ Google not loaded yet")
+      return
     }
-  }
+
+    if (!window.google) {
+      console.log("❌ window.google not available")
+      return
+    }
+
+    if (!mapRef.current) {
+      console.log("❌ mapRef not ready")
+      return
+    }
+
+    console.log("🚀 Initializing Google Map")
+
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: { lat: -26.2041, lng: 28.0473 },
+      zoom: 12,
+    })
+
+    console.log("✅ Map created successfully")
+
+    if (searchInputRef.current) {
+      console.log("🔍 Attaching autocomplete")
+
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        searchInputRef.current
+      )
+
+      autocomplete.addListener("place_changed", () => {
+        console.log("📍 Place changed triggered")
+
+        const place = autocomplete.getPlace()
+        console.log("📦 Selected place:", place)
+
+        if (!place.geometry) {
+          console.log("❌ No geometry found in place")
+          return
+        }
+
+        map.setCenter(place.geometry.location)
+        map.setZoom(15)
+
+        new window.google.maps.Marker({
+          position: place.geometry.location,
+          map,
+        })
+
+        console.log("✅ Marker placed")
+      })
+    } else {
+      console.log("❌ searchInputRef not available")
+    }
+  }, [googleLoaded])
 
   return (
-    <LoadScript
-      googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!}
-      libraries={["places"]}
-    >
+    <>
+      <Script
+        src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places,geometry`}
+        strategy="afterInteractive"
+        onLoad={() => {
+          console.log("🌍 Google Maps script loaded")
+          setGoogleLoaded(true)
+        }}
+        onError={(e) => {
+          console.log("🔥 Google Maps script failed to load", e)
+        }}
+      />
+
       <div className="space-y-4">
-        <Autocomplete
-          onLoad={(ref) => (autocompleteRef.current = ref)}
-          onPlaceChanged={handlePlaceChanged}
-        >
-          <input
-            type="text"
-            placeholder="Search address..."
-            className="w-full rounded-lg border p-3"
-          />
-        </Autocomplete>
-
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={center}
-          zoom={14}
-        >
-          <Marker position={center} />
-          <Circle
-            center={center}
-            radius={radius}
-            options={{
-              fillColor: "#3b82f6",
-              fillOpacity: 0.2,
-              strokeColor: "#3b82f6",
-              strokeOpacity: 0.8,
-              strokeWeight: 2,
-            }}
-          />
-        </GoogleMap>
-
         <input
-          type="range"
-          min={100}
-          max={5000}
-          step={100}
-          value={radius}
-          onChange={(e) => setRadius(Number(e.target.value))}
-          className="w-full"
+          ref={searchInputRef}
+          placeholder="Search for company address..."
+          className="w-full border rounded-lg p-3"
+        />
+
+        <div
+          ref={mapRef}
+          className="h-[400px] rounded-xl border"
         />
       </div>
-    </LoadScript>
+    </>
   )
 }
