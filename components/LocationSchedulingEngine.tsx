@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   MapPin,
   Clock,
@@ -274,59 +274,111 @@ function MapContainer({
 
 // Address search input with autocomplete styling
 function AddressSearch({
-  value,
-  onChange,
   onSelect,
-  placeholder = "Search for an address...",
 }: {
-  value: string
-  onChange: (value: string) => void
   onSelect: (location: Location) => void
-  placeholder?: string
 }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [filteredAddresses, setFilteredAddresses] = useState(SAMPLE_ADDRESSES)
+  const [query, setQuery] = useState("")
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchSuggestions = async (value: string) => {
+    if (!value) {
+      setSuggestions([])
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const response = await fetch(
+        "https://places.googleapis.com/v1/places:autocomplete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!,
+          },
+          body: JSON.stringify({
+            input: value,
+          }),
+        }
+      )
+
+      const data = await response.json()
+
+      console.log("🔎 Autocomplete results:", data)
+
+      setSuggestions(data.suggestions || [])
+    } catch (error) {
+      console.error("Autocomplete error:", error)
+    }
+
+    setLoading(false)
+  }
+
+  const fetchPlaceDetails = async (placeId: string) => {
+    try {
+      const response = await fetch(
+        `https://places.googleapis.com/v1/places/${placeId}`,
+        {
+          headers: {
+            "X-Goog-Api-Key": process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      console.log("📦 Place details:", data)
+
+      if (!data.location) return
+
+      const selectedLocation = {
+        address: data.formattedAddress,
+        lat: data.location.latitude,
+        lng: data.location.longitude,
+      }
+
+      console.log("✅ Sending location to parent:", selectedLocation)
+
+      onSelect(selectedLocation)
+      setSuggestions([])
+      setQuery(selectedLocation.address)
+    } catch (error) {
+      console.error("Details error:", error)
+    }
+  }
 
   useEffect(() => {
-    if (value.length > 0) {
-      const filtered = SAMPLE_ADDRESSES.filter((addr) =>
-        addr.address.toLowerCase().includes(value.toLowerCase())
-      )
-      setFilteredAddresses(filtered.length > 0 ? filtered : SAMPLE_ADDRESSES)
-    } else {
-      setFilteredAddresses(SAMPLE_ADDRESSES)
-    }
-  }, [value])
+    const delay = setTimeout(() => {
+      fetchSuggestions(query)
+    }, 300)
+
+    return () => clearTimeout(delay)
+  }, [query])
 
   return (
     <div className="relative">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setIsOpen(true)}
-          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-          placeholder={placeholder}
-          className="pl-10 h-11 rounded-xl border-slate-200 focus:border-blue-500 focus:ring-blue-500/20"
-        />
-      </div>
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden animate-fade-in">
-          {filteredAddresses.map((addr, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={() => {
-                onSelect(addr)
-                onChange(addr.address)
-                setIsOpen(false)
-              }}
-              className="w-full px-4 py-3 text-left hover:bg-slate-50 flex items-center gap-3 transition-colors"
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search for company address..."
+        className="w-full border rounded-xl p-3"
+      />
+
+      {suggestions.length > 0 && (
+        <div className="absolute z-50 bg-white border rounded-xl mt-1 w-full shadow-lg">
+          {suggestions.map((item: any) => (
+            <div
+              key={item.placePrediction.placeId}
+              onClick={() =>
+                fetchPlaceDetails(item.placePrediction.placeId)
+              }
+              className="p-3 hover:bg-gray-100 cursor-pointer"
             >
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              <span className="text-sm text-slate-700 truncate">{addr.address}</span>
-            </button>
+              {item.placePrediction.text.text}
+            </div>
           ))}
         </div>
       )}
@@ -514,10 +566,12 @@ export default function LocationSchedulingEngine() {
 
   // Handlers
   const handlePrimaryLocationSelect = (location: Location) => {
+    console.log("📍 Selected primary location:", location)
     setPrimarySchedule((prev) => ({ ...prev, location }))
   }
 
   const handleRadiusChange = (value: number[]) => {
+    console.log("🎚 Radius changed:", value[0])
     setPrimarySchedule((prev) => ({ ...prev, radius: value[0] }))
   }
 
@@ -603,12 +657,9 @@ export default function LocationSchedulingEngine() {
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium text-slate-700">Primary Location</Label>
-              <AddressSearch
-                value={addressSearch}
-                onChange={setAddressSearch}
-                onSelect={handlePrimaryLocationSelect}
-                placeholder="Search for company address..."
-              />
+            <AddressSearch
+            onSelect={handlePrimaryLocationSelect}
+          />
             </div>
 
             {/* Radius control */}
@@ -638,9 +689,28 @@ export default function LocationSchedulingEngine() {
         <CardContent className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Map Section - Left 2/3 */}
-            <div className="lg:col-span-2">
-             <MapLocationSelector />
-            </div>
+        <div className="lg:col-span-2">
+        <MapLocationSelector
+          location={
+            primarySchedule.location.address
+              ? primarySchedule.location
+              : null
+          }
+          radius={primarySchedule.radius}
+          onLocationSelect={(loc) => {
+            console.log("📌 Parent received location:", loc)
+            setPrimarySchedule((prev) => ({ ...prev, location: loc }))
+          }}
+          onRadiusChange={(r) => {
+            console.log("🎛 Parent received radius:", r)
+            setPrimarySchedule((prev) => ({ ...prev, radius: r }))
+          }}
+          checkpoints={checkpoints.map((cp) => ({
+            lat: cp.location.lat,
+            lng: cp.location.lng,
+          }))}
+        />
+      </div>
 
             {/* Tabs Section - Right 1/3 */}
             <div className="lg:col-span-1">
@@ -767,12 +837,9 @@ export default function LocationSchedulingEngine() {
                     {/* Custom location */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium text-slate-700">Custom Location</Label>
-                      <AddressSearch
-                        value={customLocationSearch}
-                        onChange={setCustomLocationSearch}
-                        onSelect={setCustomLocation}
-                        placeholder="Select override location..."
-                      />
+                        <AddressSearch
+                          onSelect={handlePrimaryLocationSelect}
+                        />
                     </div>
 
                     {/* Time settings */}
@@ -846,11 +913,8 @@ export default function LocationSchedulingEngine() {
                     {/* Add checkpoint */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium text-slate-700">Add Checkpoint</Label>
-                      <AddressSearch
-                        value={checkpointLocationSearch}
-                        onChange={setCheckpointLocationSearch}
-                        onSelect={setCheckpointLocation}
-                        placeholder="Search checkpoint location..."
+                        <AddressSearch
+                        onSelect={handlePrimaryLocationSelect}
                       />
                     </div>
 

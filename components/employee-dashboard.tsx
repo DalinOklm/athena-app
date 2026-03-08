@@ -264,7 +264,6 @@ const loadAttendance = async () => {
     const openRecord = data.find((r: any) => r.check_out_time === null);
 
     if (openRecord) {
-      console.log("🟢 ACTIVE CHECK-IN FOUND", openRecord.id);
 
       setIsCheckedIn(true);
       setActiveAttendance(openRecord);
@@ -281,7 +280,6 @@ const loadAttendance = async () => {
         (now.getTime() - checkInDate.getTime()) / 1000
       );
 
-      //console.log("⏱️ Initial elapsed seconds:", seconds);
 
       setElapsedSeconds(seconds); // ✅ unlocks the UI timer
     } else {
@@ -307,7 +305,6 @@ const loadAttendance = async () => {
 useEffect(() => {
   if (elapsedSeconds === null) return;
 
-  //console.log("⏱ TIMER STARTED", elapsedSeconds);
 
   const interval = setInterval(() => {
     setElapsedSeconds((prev) => {
@@ -317,7 +314,6 @@ useEffect(() => {
   }, 1000);
 
   return () => {
-    //console.log("🛑 TIMER STOPPED");
     clearInterval(interval);
   };
 }, [elapsedSeconds]); // ✅ THIS IS THE FIX
