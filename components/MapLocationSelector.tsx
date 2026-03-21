@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import Script from "next/script"
+import { debugLog, debugError } from "@/lib/debug"
 
 declare global {
   interface Window {
@@ -30,9 +31,10 @@ export default function MapLocationSelector({
   onRadiusChange,
   checkpoints,
 }: Props) {
-  const mapRef = useRef<HTMLDivElement | null>(null)
-  
 
+  debugLog("MapLocationSelector rendered", { location, radius, checkpoints })
+
+  const mapRef = useRef<HTMLDivElement | null>(null)
   const mapInstance = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const circleRef = useRef<any>(null)
@@ -46,15 +48,36 @@ export default function MapLocationSelector({
   ----------------------------------------------------------- */
 
   useEffect(() => {
-    if (!googleLoaded || !mapRef.current || !window.google) return
+    debugLog("Map init useEffect triggered", {
+      googleLoaded,
+      hasMapRef: !!mapRef.current,
+      hasGoogle: !!window.google,
+    })
 
-    console.log("🚀 Initializing Google Map")
+    if (!googleLoaded) {
+      debugError("Google not loaded yet", null)
+      return
+    }
+
+    if (!mapRef.current) {
+      debugError("mapRef not available", null)
+      return
+    }
+
+    if (!window.google) {
+      debugError("window.google not available", null)
+      return
+    }
+
+    debugLog("🚀 Initializing Google Map")
 
     mapInstance.current = new window.google.maps.Map(mapRef.current, {
       center: { lat: -26.2041, lng: 28.0473 },
       zoom: 12,
     })
-   
+
+    debugLog("Map initialized successfully")
+
   }, [googleLoaded])
 
   /* -----------------------------------------------------------
@@ -62,27 +85,49 @@ export default function MapLocationSelector({
   ----------------------------------------------------------- */
 
   useEffect(() => {
-    if (!mapInstance.current || !location) return
+    debugLog("Location effect triggered", location)
 
-    console.log("🗺 Updating map for location:", location)
+    if (!mapInstance.current) {
+      debugError("Map instance not ready", null)
+      return
+    }
+
+    if (!location) {
+      debugError("Location is null", null)
+      return
+    }
+
+    if (!location.lat || !location.lng) {
+      debugError("Invalid location object", location)
+      return
+    }
 
     const map = mapInstance.current
-
     const latLng = { lat: location.lat, lng: location.lng }
+
+    debugLog("Updating map center", latLng)
 
     map.setCenter(latLng)
     map.setZoom(15)
 
-    // Remove old marker
-    if (markerRef.current) markerRef.current.setMap(null)
+    // Marker
+    if (markerRef.current) {
+      debugLog("Removing old marker")
+      markerRef.current.setMap(null)
+    }
 
     markerRef.current = new window.google.maps.Marker({
       position: latLng,
       map,
     })
 
-    // Remove old circle
-    if (circleRef.current) circleRef.current.setMap(null)
+    debugLog("Marker added")
+
+    // Circle
+    if (circleRef.current) {
+      debugLog("Removing old circle")
+      circleRef.current.setMap(null)
+    }
 
     circleRef.current = new window.google.maps.Circle({
       map,
@@ -96,15 +141,20 @@ export default function MapLocationSelector({
       editable: true,
     })
 
+    debugLog("Circle created with radius", radius)
+
     circleRef.current.addListener("radius_changed", () => {
       const newRadius = circleRef.current.getRadius()
-      console.log("🎯 Radius updated from map:", newRadius)
+      debugLog("🎯 Radius updated from map", newRadius)
       onRadiusChange(newRadius)
     })
 
     /* ---------- Pulse Animation ---------- */
 
-    if (pulseRef.current) pulseRef.current.setMap(null)
+    if (pulseRef.current) {
+      debugLog("Removing old pulse")
+      pulseRef.current.setMap(null)
+    }
 
     pulseRef.current = new window.google.maps.Circle({
       map,
@@ -115,44 +165,61 @@ export default function MapLocationSelector({
       strokeOpacity: 0,
     })
 
+    debugLog("Pulse animation started")
+
     let growing = true
     const pulseInterval = setInterval(() => {
       if (!pulseRef.current) return
-      const r = pulseRef.current.getRadius()
 
+      const r = pulseRef.current.getRadius()
       pulseRef.current.setRadius(growing ? r + 20 : r - 20)
 
       if (r > radius * 1.2) growing = false
       if (r < radius) growing = true
     }, 100)
 
-    return () => clearInterval(pulseInterval)
+    return () => {
+      debugLog("Clearing pulse interval")
+      clearInterval(pulseInterval)
+    }
 
   }, [location])
 
   /* -----------------------------------------------------------
-     HANDLE RADIUS SLIDER CHANGES
+     HANDLE RADIUS SLIDER
   ----------------------------------------------------------- */
 
   useEffect(() => {
-    if (!circleRef.current || !pulseRef.current) return
+    debugLog("Radius effect triggered", radius)
 
-    console.log("🎛 Sync radius from slider:", radius)
+    if (!circleRef.current || !pulseRef.current) {
+      debugError("Circle or pulse not initialized", {
+        hasCircle: !!circleRef.current,
+        hasPulse: !!pulseRef.current,
+      })
+      return
+    }
 
     circleRef.current.setRadius(radius)
     pulseRef.current.setRadius(radius)
+
+    debugLog("Radius synced to map")
+
   }, [radius])
 
   /* -----------------------------------------------------------
-     HANDLE CHECKPOINT MARKERS
+     HANDLE CHECKPOINTS
   ----------------------------------------------------------- */
 
   useEffect(() => {
-    if (!mapInstance.current) return
+    debugLog("Checkpoint effect triggered", checkpoints)
 
-    console.log("📍 Rendering checkpoints:", checkpoints)
+    if (!mapInstance.current) {
+      debugError("Map not ready for checkpoints", null)
+      return
+    }
 
-    // Clear old markers
+    // Clear old
     checkpointMarkersRef.current.forEach((m) => m.setMap(null))
     checkpointMarkersRef.current = []
 
@@ -167,6 +234,9 @@ export default function MapLocationSelector({
 
       checkpointMarkersRef.current.push(marker)
     })
+
+    debugLog("Checkpoint markers rendered", checkpointMarkersRef.current.length)
+
   }, [checkpoints])
 
   /* -----------------------------------------------------------
@@ -179,14 +249,15 @@ export default function MapLocationSelector({
         src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places,geometry`}
         strategy="afterInteractive"
         onLoad={() => {
-          console.log("🌍 Google Maps script loaded")
+          debugLog("🌍 Google Maps script loaded")
           setGoogleLoaded(true)
+        }}
+        onError={(e) => {
+          debugError("Google Maps script failed to load", e)
         }}
       />
 
       <div className="space-y-4">
-       
-
         <div
           ref={mapRef}
           className="h-[400px] rounded-xl border"
