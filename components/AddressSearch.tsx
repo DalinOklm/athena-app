@@ -18,9 +18,21 @@ export default function AddressSearch({
      CLOSE DROPDOWN ON OUTSIDE CLICK
   ----------------------------------------------------------- */
   React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        debugLog("Clicked outside → closing suggestions")
+      const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+
+      // 🔥 ALLOW MAP CLICKS
+      const isMapClick = target.closest(".gm-style")
+
+      if (isMapClick) {
+        debugLog("🟡 Click on map detected → ignoring outside handler")
+        console.log("🟡 Click on map detected → ignoring outside handler")
+        return
+      }
+
+      if (!containerRef.current?.contains(target)) {
+        debugLog("🟢 Clicked outside → closing suggestions")
+        console.log("🟢 Clicked outside → closing suggestions")
         setSuggestions([])
       }
     }

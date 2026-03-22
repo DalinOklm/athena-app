@@ -43,6 +43,11 @@ export default function LocationSchedulingEngine() {
   const [checkpointLocation, setCheckpointLocation] = useState<Location | null>(null)
   const [checkpoints, setCheckpoints] = useState<any[]>([])
 
+  // 🔥 NEW: map selection mode
+  const [mapSelectMode, setMapSelectMode] = useState<
+    "primary" | "custom" | "checkpoint" | null
+  >(null)
+
   /* -----------------------------------------------------------
      STATE WATCHERS
   ----------------------------------------------------------- */
@@ -58,6 +63,10 @@ export default function LocationSchedulingEngine() {
   useEffect(() => {
     debugLog("checkpointLocation changed", checkpointLocation)
   }, [checkpointLocation])
+
+  useEffect(() => {
+    debugLog("mapSelectMode changed", mapSelectMode)
+  }, [mapSelectMode])
 
   /* -----------------------------------------------------------
      HANDLERS
@@ -98,6 +107,40 @@ export default function LocationSchedulingEngine() {
 
     setCheckpointLocation(location)
   }
+
+  /* -----------------------------------------------------------
+     🔥 NEW: MAP CLICK HANDLER
+  ----------------------------------------------------------- */
+
+const handleMapClickSelect = (location: Location) => {
+  console.log("🔥 HANDLE MAP CLICK SELECT EXECUTED")
+
+  debugLog("Map click selection received", {
+    mode: mapSelectMode,
+    location,
+  })
+
+  if (!mapSelectMode) {
+    debugError("No map selection mode set", null)
+    return
+  }
+
+  switch (mapSelectMode) {
+    case "primary":
+      handlePrimaryLocationSelect(location)
+      break
+
+    case "custom":
+      handleCustomLocationSelect(location)
+      break
+
+    case "checkpoint":
+      handleCheckpointLocationSelect(location)
+      break
+  }
+
+  // ❌ DO NOT RESET MODE HERE
+}
 
   const handleRadiusChange = (value: number[]) => {
     debugLog("Radius changed from slider", value)
@@ -152,45 +195,67 @@ export default function LocationSchedulingEngine() {
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
 
-      {/* PRIMARY LOCATION CARD */}
+      {/* PRIMARY LOCATION */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
-        <Label className="text-sm font-medium text-slate-700">
-          Primary Location
-        </Label>
+        <Label>Primary Location</Label>
 
-        <AddressSearch onSelect={handlePrimaryLocationSelect} />
+        <div className="flex gap-2">
+          <AddressSearch onSelect={handlePrimaryLocationSelect} />
+
+         <Button
+          variant="outline"
+          onClick={() => {
+            console.log("🔥 BUTTON CLICKED")
+            debugLog("Map mode → checkpoint")
+            setMapSelectMode("checkpoint")
+          }}
+        >
+          Select on Map
+        </Button>
+        </div>
 
         {primarySchedule.location.address && (
-          <div className="space-y-3 pt-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">Radius</span>
-              <span className="font-medium text-blue-600">
-                {primarySchedule.radius}m
-              </span>
-            </div>
-
-            <Slider
-              value={[primarySchedule.radius]}
-              onValueChange={handleRadiusChange}
-              min={100}
-              max={5000}
-            />
-          </div>
+          <Slider
+            value={[primarySchedule.radius]}
+            onValueChange={handleRadiusChange}
+            min={100}
+            max={5000}
+          />
         )}
       </div>
 
-      {/* MAP CARD */}
+      {/* MAP */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border">
-        <MapLocationSelector
-          location={
-            primarySchedule.location.address
+       <MapLocationSelector
+          location={(() => {
+            const loc = primarySchedule.location.address
               ? primarySchedule.location
               : null
-          }
-          radius={primarySchedule.radius}
-          onLocationSelect={handlePrimaryLocationSelect}
+
+            debugLog("Passing location to MapLocationSelector", loc)
+
+            return loc
+          })()}
+
+          radius={(() => {
+            debugLog("Passing radius to MapLocationSelector", primarySchedule.radius)
+            return primarySchedule.radius
+          })()}
+
+          onLocationSelect={(loc) => {
+            console.log("🔥🔥🔥 PARENT RECEIVED MAP CLICK", loc)
+            debugLog("onLocationSelect triggered from Map", loc)
+            handlePrimaryLocationSelect(loc)
+          }}
+
+          onMapClickSelect={(loc) => {
+            console.log("🔥🔥🔥 HANDLE MAP CLICK SELECT EXECUTED")
+            debugLog("onMapClickSelect triggered from Map", loc)
+            handleMapClickSelect(loc)
+          }}
+
           onRadiusChange={(r) => {
-            debugLog("Parent received radius from map", r)
+            debugLog("onRadiusChange triggered from Map", r)
 
             if (Array.isArray(r)) {
               debugError("Radius should not be array here", r)
@@ -202,36 +267,63 @@ export default function LocationSchedulingEngine() {
               radius: r,
             }))
           }}
-          checkpoints={checkpoints.map((cp) => ({
-            lat: cp.location.lat,
-            lng: cp.location.lng,
-          }))}
+
+          checkpoints={(() => {
+            const cps = checkpoints.map((cp) => ({
+              lat: cp.location.lat,
+              lng: cp.location.lng,
+            }))
+
+            debugLog("Passing checkpoints to MapLocationSelector", cps)
+
+            return cps
+          })()}
         />
       </div>
 
-      {/* SAVE BUTTON */}
+      {/* SAVE */}
       <div className="flex justify-end">
         <Button onClick={handleSavePrimarySchedule}>
           Save Primary Schedule
         </Button>
       </div>
 
-      {/* CUSTOM LOCATION CARD */}
+      {/* CUSTOM */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
-        <Label className="text-sm font-medium text-slate-700">
-          Custom Location
-        </Label>
+        <Label>Custom Location</Label>
 
-        <AddressSearch onSelect={handleCustomLocationSelect} />
+        <div className="flex gap-2">
+          <AddressSearch onSelect={handleCustomLocationSelect} />
+
+          <Button
+            variant="outline"
+            onClick={() => {
+              debugLog("Map mode → custom")
+              setMapSelectMode("custom")
+            }}
+          >
+            Select on Map
+          </Button>
+        </div>
       </div>
 
-      {/* CHECKPOINT CARD */}
+      {/* CHECKPOINT */}
       <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
-        <Label className="text-sm font-medium text-slate-700">
-          Checkpoint
-        </Label>
+        <Label>Checkpoint</Label>
 
-        <AddressSearch onSelect={handleCheckpointLocationSelect} />
+        <div className="flex gap-2">
+          <AddressSearch onSelect={handleCheckpointLocationSelect} />
+
+          <Button
+            variant="outline"
+            onClick={() => {
+              debugLog("Map mode → checkpoint")
+              setMapSelectMode("checkpoint")
+            }}
+          >
+            Select on Map
+          </Button>
+        </div>
 
         <Button onClick={handleAddCheckpoint}>
           Add Checkpoint
