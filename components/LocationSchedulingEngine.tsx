@@ -3,21 +3,9 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import { debugLog, debugError } from "@/lib/debug"
-import {
-  MapPin, Clock, Users, Plus, Trash2, Navigation, CheckCircle2, Circle, Building2,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import MapLocationSelector from "@/components/MapLocationSelector"
 import AddressSearch from "@/components/AddressSearch"
 
@@ -53,11 +41,10 @@ export default function LocationSchedulingEngine() {
 
   const [customLocation, setCustomLocation] = useState<Location | null>(null)
   const [checkpointLocation, setCheckpointLocation] = useState<Location | null>(null)
-
   const [checkpoints, setCheckpoints] = useState<any[]>([])
 
   /* -----------------------------------------------------------
-     GLOBAL STATE WATCHER (VERY IMPORTANT)
+     STATE WATCHERS
   ----------------------------------------------------------- */
 
   useEffect(() => {
@@ -84,11 +71,10 @@ export default function LocationSchedulingEngine() {
       return
     }
 
-    setPrimarySchedule((prev) => {
-      const updated = { ...prev, location }
-      debugLog("Updated primarySchedule", updated)
-      return updated
-    })
+    setPrimarySchedule((prev) => ({
+      ...prev,
+      location,
+    }))
   }
 
   const handleCustomLocationSelect = (location: Location) => {
@@ -164,66 +150,93 @@ export default function LocationSchedulingEngine() {
   ----------------------------------------------------------- */
 
   return (
-    <div className="p-6">
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
 
-      {/* PRIMARY LOCATION */}
-      <Label>Primary Location</Label>
-      <AddressSearch onSelect={handlePrimaryLocationSelect} />
+      {/* PRIMARY LOCATION CARD */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+        <Label className="text-sm font-medium text-slate-700">
+          Primary Location
+        </Label>
 
-      {/* RADIUS */}
-      {primarySchedule.location.address && (
-        <Slider
-          value={[primarySchedule.radius]}
-          onValueChange={handleRadiusChange}
-          min={100}
-          max={5000}
-        />
-      )}
+        <AddressSearch onSelect={handlePrimaryLocationSelect} />
 
-      {/* MAP */}
-      <MapLocationSelector
-        location={
-          primarySchedule.location.address
-            ? primarySchedule.location
-            : null
-        }
-        radius={primarySchedule.radius}
-        onLocationSelect={handlePrimaryLocationSelect}
-        onRadiusChange={(r) => {
-          debugLog("Parent received radius from map", r)
+        {primarySchedule.location.address && (
+          <div className="space-y-3 pt-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-600">Radius</span>
+              <span className="font-medium text-blue-600">
+                {primarySchedule.radius}m
+              </span>
+            </div>
 
-          if (Array.isArray(r)) {
-            debugError("Radius should not be array here", r)
-            return
+            <Slider
+              value={[primarySchedule.radius]}
+              onValueChange={handleRadiusChange}
+              min={100}
+              max={5000}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* MAP CARD */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border">
+        <MapLocationSelector
+          location={
+            primarySchedule.location.address
+              ? primarySchedule.location
+              : null
           }
+          radius={primarySchedule.radius}
+          onLocationSelect={handlePrimaryLocationSelect}
+          onRadiusChange={(r) => {
+            debugLog("Parent received radius from map", r)
 
-          setPrimarySchedule((prev) => ({
-            ...prev,
-            radius: r,
-          }))
-        }}
-        checkpoints={checkpoints.map((cp) => ({
-          lat: cp.location.lat,
-          lng: cp.location.lng,
-        }))}
-      />
+            if (Array.isArray(r)) {
+              debugError("Radius should not be array here", r)
+              return
+            }
 
-      {/* SAVE */}
-      <Button onClick={handleSavePrimarySchedule}>
-        Save Primary Schedule
-      </Button>
+            setPrimarySchedule((prev) => ({
+              ...prev,
+              radius: r,
+            }))
+          }}
+          checkpoints={checkpoints.map((cp) => ({
+            lat: cp.location.lat,
+            lng: cp.location.lng,
+          }))}
+        />
+      </div>
 
-      {/* CUSTOM */}
-      <Label>Custom Location</Label>
-      <AddressSearch onSelect={handleCustomLocationSelect} />
+      {/* SAVE BUTTON */}
+      <div className="flex justify-end">
+        <Button onClick={handleSavePrimarySchedule}>
+          Save Primary Schedule
+        </Button>
+      </div>
 
-      {/* CHECKPOINT */}
-      <Label>Checkpoint</Label>
-      <AddressSearch onSelect={handleCheckpointLocationSelect} />
+      {/* CUSTOM LOCATION CARD */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+        <Label className="text-sm font-medium text-slate-700">
+          Custom Location
+        </Label>
 
-      <Button onClick={handleAddCheckpoint}>
-        Add Checkpoint
-      </Button>
+        <AddressSearch onSelect={handleCustomLocationSelect} />
+      </div>
+
+      {/* CHECKPOINT CARD */}
+      <div className="bg-white p-5 rounded-2xl shadow-sm border space-y-4">
+        <Label className="text-sm font-medium text-slate-700">
+          Checkpoint
+        </Label>
+
+        <AddressSearch onSelect={handleCheckpointLocationSelect} />
+
+        <Button onClick={handleAddCheckpoint}>
+          Add Checkpoint
+        </Button>
+      </div>
 
     </div>
   )
