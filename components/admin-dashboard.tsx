@@ -531,15 +531,18 @@ const getEmployeesAssignedToLocation = (locationName: string) => {
           <CardContent className="p-8">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Button
-                variant="outline"
-                className="h-auto justify-start gap-3 px-4 py-3 shadow-sm bg-transparent"
-                onClick={() => setLocationManagementOpen(true)}
-              >
-                <div className="rounded-lg bg-purple-50 p-2">
-                  <MapPin className="h-4 w-4 text-purple-600" />
-                </div>
-                <span className="font-medium">Manage Locations</span>
-              </Button>
+              variant="outline"
+              className="h-auto justify-start gap-3 px-4 py-3 shadow-sm bg-transparent"
+              onClick={() => {
+                console.log("🔥 Navigating to Location Control Center")
+                router.push("/admin-dashboard/location-control-center")
+              }}
+            >
+              <div className="rounded-lg bg-purple-50 p-2">
+                <MapPin className="h-4 w-4 text-purple-600" />
+              </div>
+              <span className="font-medium">Manage Locations</span>
+            </Button>
               <Button variant="outline" className="h-auto justify-start gap-3 px-4 py-3 shadow-sm bg-transparent">
                 <div className="rounded-lg bg-emerald-50 p-2">
                   <FileText className="h-4 w-4 text-emerald-600" />
