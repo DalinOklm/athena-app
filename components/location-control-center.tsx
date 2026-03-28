@@ -10,6 +10,8 @@ import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
+import AddressSearch from "@/components/AddressSearch"
+import MapLocationSelector from "@/components/MapLocationSelector"
 import {
   Card,
   CardContent,
@@ -69,7 +71,11 @@ function getInitials(name: string) {
 }
 
 export function LocationControlCenter() {
-  const [radius, setRadius] = React.useState([150])
+  const [selectedAddress, setSelectedAddress] = React.useState("")
+  const [selectedLat, setSelectedLat] = React.useState(0)
+  const [selectedLng, setSelectedLng] = React.useState(0)
+
+  const [radius, setRadius] = React.useState(150)
   const [checkInTime, setCheckInTime] = React.useState("09:00")
   const [checkOutTime, setCheckOutTime] = React.useState("18:00")
   const [sameLocation, setSameLocation] = React.useState(true)
@@ -79,7 +85,7 @@ export function LocationControlCenter() {
   const [selectedEmployees, setSelectedEmployees] = React.useState<number[]>([])
   const [editingEmployee, setEditingEmployee] = React.useState<number | null>(null)
   const [editData, setEditData] = React.useState<Partial<Employee>>({})
-  const [selectedAddress] = React.useState("123 Business Park, San Francisco, CA 94102")
+  const [mapSelectMode, setMapSelectMode] = React.useState<"primary" | null>(null)
 
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
@@ -174,17 +180,25 @@ export function LocationControlCenter() {
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        placeholder="Search address..."
-                        value={searchAddress}
-                        onChange={(e) => setSearchAddress(e.target.value)}
-                        className="pl-9"
-                      />
+                    <AddressSearch
+                    onSelect={(loc) => {
+                      console.log("🔥 Address selected from autocomplete:", loc)
+
+                      setSelectedAddress(loc.address)
+                      setSelectedLat(loc.lat)
+                      setSelectedLng(loc.lng)
+                    }}
+                  />
                     </div>
-                    <Button variant="outline">
-                      <MapPin className="mr-1.5 h-4 w-4" />
-                      Select on Map
-                    </Button>
+                   <Button
+                    variant={mapSelectMode ? "default" : "outline"}
+                    onClick={() => {
+                      console.log("🔥 Select on Map clicked")
+                      setMapSelectMode("primary")
+                    }}
+                  >
+                    Select on Map
+                  </Button>
                   </div>
                   <div className="rounded-lg bg-muted/50 p-3">
                     <p className="text-sm font-medium text-foreground">{selectedAddress}</p>
@@ -196,17 +210,17 @@ export function LocationControlCenter() {
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">Check-in Radius</Label>
                     <span className="rounded-md bg-muted px-2 py-1 text-sm font-medium tabular-nums">
-                      {radius[0]} meters
+                      {radius} meters
                     </span>
                   </div>
-                  <Slider
-                    value={radius}
-                    onValueChange={setRadius}
-                    min={50}
-                    max={500}
-                    step={10}
-                    className="w-full"
-                  />
+                <Slider
+                  value={[radius]}
+                  onValueChange={(val: number[]) => setRadius(val[0])}
+                  min={50}
+                  max={500}
+                  step={10}
+                  className="w-full"
+                />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>50m</span>
                     <span>500m</span>
@@ -272,49 +286,57 @@ export function LocationControlCenter() {
         </Card>
 
         {/* Middle Section - Map */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Map View</CardTitle>
-            <CardDescription>Visual representation of the check-in location and radius</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="relative h-[350px] overflow-hidden rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
-              {/* Map Grid Pattern */}
-              <div
-                className="absolute inset-0 opacity-20"
-                style={{
-                  backgroundImage: `linear-gradient(rgba(100, 116, 139, 0.3) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(100, 116, 139, 0.3) 1px, transparent 1px)`,
-                  backgroundSize: "40px 40px",
-                }}
-              />
-              
-              {/* Radius Circle */}
-              <div
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-blue-500/40 bg-blue-500/10 transition-all duration-300"
-                style={{
-                  width: `${Math.min(radius[0] * 1.2, 280)}px`,
-                  height: `${Math.min(radius[0] * 1.2, 280)}px`,
-                }}
-              />
+            <Card>
+        <CardHeader>
+          <CardTitle>Map View</CardTitle>
+          <CardDescription>
+            Visual representation of the check-in location and radius
+          </CardDescription>
+        </CardHeader>
 
-              {/* Center Marker */}
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <div className="relative">
-                  <div className="absolute -inset-2 animate-ping rounded-full bg-blue-500/30" />
-                  <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 shadow-lg">
-                    <MapPin className="h-4 w-4 text-white" />
-                  </div>
-                </div>
-              </div>
+        <CardContent>
+          <div className="h-[400px] w-full overflow-hidden rounded-xl border">
+           <MapLocationSelector
+            location={
+              selectedAddress
+                ? { address: selectedAddress, lat: selectedLat, lng: selectedLng }
+                : null
+            }
+            radius={radius}
 
-              {/* Map Attribution */}
-              <div className="absolute bottom-3 right-3 rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground backdrop-blur-sm">
-                Map Preview
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            onLocationSelect={(loc) => {
+              console.log("🔥 Location selected (search → map):", loc)
+
+              setSelectedAddress(loc.address)
+              setSelectedLat(loc.lat)
+              setSelectedLng(loc.lng)
+            }}
+
+            onMapClickSelect={(loc) => {
+              console.log("🔥 Map clicked location:", loc)
+
+              if (!mapSelectMode) {
+                console.log("⚠️ Map click ignored (no mode)")
+                return
+              }
+
+              setSelectedAddress(loc.address)
+              setSelectedLat(loc.lat)
+              setSelectedLng(loc.lng)
+
+              setMapSelectMode(null) // exit selection mode
+            }}
+
+            onRadiusChange={(r) => {
+              console.log("🔥 Radius changed:", r)
+              setRadius(r)
+            }}
+
+            checkpoints={[]}
+          />
+          </div>
+        </CardContent>
+      </Card>
 
         {/* Bottom Section - Employee Table */}
         <Card>
