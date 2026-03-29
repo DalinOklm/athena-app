@@ -276,10 +276,47 @@ export function LocationControlCenter() {
                   </div>
                 </div>
 
-                <Button className="w-full">
-                  <Save className="mr-1.5 h-4 w-4" />
-                  Save Configuration
-                </Button>
+              <Button
+                className="w-full"
+                onClick={async () => {
+                  console.log("🔥 Save Configuration clicked")
+
+                  try {
+                    const res = await fetch("/api/location/save-company-location", {
+                      method: "POST",
+                      credentials: "include", // 🔥 THIS IS THE FIX
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        address: selectedAddress,
+                        lat: selectedLat,
+                        lng: selectedLng,
+                        radius,
+                        checkInTime,
+                        checkOutTime,
+                      }),
+                    })
+
+                    const data = await res.json()
+
+                    console.log("✅ Save response:", data)
+
+                    if (data.success) {
+                      alert("✅ Location applied to all employees")
+                    } else {
+                      alert("❌ Failed to save location")
+                    }
+
+                  } catch (err) {
+                    console.error("❌ Save error:", err)
+                    alert("❌ Something went wrong")
+                  }
+                }}
+              >
+                <Save className="mr-1.5 h-4 w-4" />
+                Save Configuration
+              </Button>
               </div>
             </div>
           </CardContent>
