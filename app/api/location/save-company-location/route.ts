@@ -100,7 +100,21 @@ export async function POST(req: Request) {
     console.log(`👥 Found ${users.length} employees`)
 
     // 5️⃣ ASSIGN LOCATION TO EMPLOYEES
-    for (const user of users) {
+   for (const user of users) {
+
+  // 🔥 STEP 1: Deactivate existing active schedule
+  await pool.request()
+    .input("employee_id", user.id)
+    .query(`
+      UPDATE employee_location_schedules
+      SET 
+        is_active = 0,
+        end_datetime = GETDATE()
+      WHERE employee_id = @employee_id
+      AND is_active = 1
+    `)
+
+  // 🔥 STEP 2: Insert new schedule
       await pool.request()
         .input("employee_id", user.id)
         .input("location_id", locationId)
@@ -140,7 +154,7 @@ export async function POST(req: Request) {
             @check_out_time
           )
         `)
-    }
+}
 
     console.log("✅ Assigned location to all employees")
 

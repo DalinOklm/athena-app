@@ -47,20 +47,6 @@ interface Employee {
   location: string
 }
 
-const employees: Employee[] = [
-  { id: 1, name: "John Doe", department: "Engineering", role: "Senior Developer", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 2, name: "Sarah Smith", department: "HR", role: "HR Manager", status: "active", assignmentType: "custom", checkInTime: "08:30", checkOutTime: "17:30", location: "456 Corporate Ave, SF" },
-  { id: 3, name: "Michael Brown", department: "Operations", role: "Operations Lead", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 4, name: "Emily Johnson", department: "Marketing", role: "Marketing Specialist", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 5, name: "David Wilson", department: "Finance", role: "Financial Analyst", status: "inactive", assignmentType: "custom", checkInTime: "10:00", checkOutTime: "19:00", location: "789 Finance Blvd, SF" },
-  { id: 6, name: "Jessica Davis", department: "Engineering", role: "QA Engineer", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 7, name: "Chris Martinez", department: "Design", role: "UI/UX Designer", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 8, name: "Amanda Taylor", department: "Sales", role: "Sales Representative", status: "active", assignmentType: "custom", checkInTime: "08:00", checkOutTime: "17:00", location: "321 Sales Center, SF" },
-  { id: 9, name: "Robert Garcia", department: "Engineering", role: "Backend Developer", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 10, name: "Jennifer Lee", department: "Customer Support", role: "Support Manager", status: "active", assignmentType: "custom", checkInTime: "07:00", checkOutTime: "16:00", location: "555 Support Hub, SF" },
-  { id: 11, name: "William Anderson", department: "Legal", role: "Legal Counsel", status: "inactive", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-  { id: 12, name: "Lisa Thompson", department: "Product", role: "Product Manager", status: "active", assignmentType: "default", checkInTime: "09:00", checkOutTime: "18:00", location: "123 Business Park, SF" },
-]
 
 function getInitials(name: string) {
   return name
@@ -83,9 +69,24 @@ export function LocationControlCenter() {
   const [employeeSearch, setEmployeeSearch] = React.useState("")
   const [filterType, setFilterType] = React.useState("all")
   const [selectedEmployees, setSelectedEmployees] = React.useState<number[]>([])
+  const [employees, setEmployees] = React.useState<any[]>([])
+  const [loadingEmployees, setLoadingEmployees] = React.useState(true)
   const [editingEmployee, setEditingEmployee] = React.useState<number | null>(null)
   const [editData, setEditData] = React.useState<Partial<Employee>>({})
   const [mapSelectMode, setMapSelectMode] = React.useState<"primary" | null>(null)
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
+// const [employees, setEmployees] = React.useState<Employee[]>([])
+// const [loadingEmployees, setLoadingEmployees] = React.useState(true)
+  const [message, setMessage] = React.useState("")
+  const resetForm = () => {
+  setSelectedAddress("")
+  setSelectedLat(0)
+  setSelectedLng(0)
+  setRadius(150)
+  setCheckInTime("09:00")
+  setCheckOutTime("18:00")
+}
 
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
@@ -98,6 +99,104 @@ export function LocationControlCenter() {
     if (filterType === "custom") return matchesSearch && emp.assignmentType === "custom"
     return matchesSearch
   })
+
+  
+
+// 🔥 FETCH EMPLOYEES FROM BACKEND
+React.useEffect(() => {
+  const formatTime = (time: any) => {
+    console.log("🧪 RAW TIME VALUE:", time, typeof time)
+
+    if (!time) return "--"
+
+    try {
+      // 🔥 CASE 1: ISO string (your current case)
+      if (typeof time === "string" && time.includes("T")) {
+        const timePart = time.split("T")[1] // "06:00:00.000Z"
+        const clean = timePart.split(".")[0] // "06:00:00"
+        const final = clean.slice(0, 5) // "06:00"
+
+        console.log("✅ ISO → FINAL:", final)
+
+        return final
+      }
+
+      // 🔥 CASE 2: Normal SQL time string
+      if (typeof time === "string") {
+        const final = time.slice(0, 5)
+
+        console.log("✅ STRING → FINAL:", final)
+
+        return final
+      }
+
+      // 🔥 CASE 3: Date object fallback
+      if (typeof time === "object") {
+        const date = new Date(time)
+
+        const hours = date.getHours().toString().padStart(2, "0")
+        const minutes = date.getMinutes().toString().padStart(2, "0")
+
+        const final = `${hours}:${minutes}`
+
+        console.log("✅ DATE → FINAL:", final)
+
+        return final
+      }
+
+      return "--"
+    } catch (err) {
+      console.error("❌ Time formatting error:", time, err)
+      return "--"
+    }
+  }
+
+  const fetchEmployees = async () => {
+    try {
+      console.log("🔥 Fetching employees...")
+
+      const res = await fetch("/api/admin/employees", {
+        credentials: "include",
+      })
+
+      const data = await res.json()
+
+      console.log("👥 FULL API RESPONSE:", data)
+
+      const mapped = data.map((emp: any) => {
+        console.log("👤 EMPLOYEE RAW:", emp)
+
+        return {
+          id: emp.id,
+          name:
+            `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
+            emp.email,
+          department: emp.department || "N/A",
+          role: "Employee",
+          status: "active",
+          assignmentType: emp.location_id ? "custom" : "default",
+
+          // 🔥 FIXED TIMES
+          checkInTime: formatTime(emp.check_in_time),
+          checkOutTime: formatTime(emp.check_out_time),
+
+          location: emp.address || "No location assigned",
+        }
+      })
+
+      console.log("✅ FINAL MAPPED:", mapped)
+
+      setEmployees(mapped)
+    } catch (err) {
+      console.error("❌ Failed to fetch employees", err)
+    } finally {
+      setLoadingEmployees(false)
+    }
+  }
+
+  fetchEmployees()
+}, [])
+
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -136,9 +235,114 @@ export function LocationControlCenter() {
 
   const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployees.includes(emp.id))
   const isSomeSelected = selectedEmployees.length > 0 && !isAllSelected
+React.useEffect(() => {
+  const formatTime = (time: any) => {
+    console.log("🧪 RAW TIME VALUE:", time, typeof time)
+
+    if (!time) return "--"
+
+    try {
+      // 🔥 CASE 1: ISO string (your current case)
+      if (typeof time === "string" && time.includes("T")) {
+        const timePart = time.split("T")[1] // "06:00:00.000Z"
+        const clean = timePart.split(".")[0] // "06:00:00"
+        const final = clean.slice(0, 5) // "06:00"
+
+        console.log("✅ ISO → FINAL:", final)
+
+        return final
+      }
+
+      // 🔥 CASE 2: Normal SQL time string
+      if (typeof time === "string") {
+        const final = time.slice(0, 5)
+
+        console.log("✅ STRING → FINAL:", final)
+
+        return final
+      }
+
+      // 🔥 CASE 3: Date object fallback
+      if (typeof time === "object") {
+        const date = new Date(time)
+
+        const hours = date.getHours().toString().padStart(2, "0")
+        const minutes = date.getMinutes().toString().padStart(2, "0")
+
+        const final = `${hours}:${minutes}`
+
+        console.log("✅ DATE → FINAL:", final)
+
+        return final
+      }
+
+      return "--"
+    } catch (err) {
+      console.error("❌ Time formatting error:", time, err)
+      return "--"
+    }
+  }
+
+  const fetchEmployees = async () => {
+    try {
+      console.log("🔥 Fetching employees...")
+
+      const res = await fetch("/api/admin/employees", {
+        credentials: "include",
+      })
+
+      const data = await res.json()
+
+      console.log("👥 FULL API RESPONSE:", data)
+
+      const mapped = data.map((emp: any) => {
+        console.log("👤 EMPLOYEE RAW:", emp)
+
+        return {
+          id: emp.id,
+          name:
+            `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
+            emp.email,
+          department: emp.department || "N/A",
+          role: "Employee",
+          status: "active",
+          assignmentType: emp.location_id ? "custom" : "default",
+
+          // 🔥 FIXED TIMES
+          checkInTime: formatTime(emp.check_in_time),
+          checkOutTime: formatTime(emp.check_out_time),
+
+          location: emp.address || "No location assigned",
+        }
+      })
+
+      console.log("✅ FINAL MAPPED:", mapped)
+
+      setEmployees(mapped)
+    } catch (err) {
+      console.error("❌ Failed to fetch employees", err)
+    } finally {
+      setLoadingEmployees(false)
+    }
+  }
+
+  fetchEmployees()
+}, [])
+
 
   return (
     <div className="min-h-screen bg-muted/40">
+       {status !== "idle" && (
+        <div
+          className={`mb-4 p-3 rounded-lg text-sm ${
+            status === "success"
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {message}
+        </div>
+      )}
       {/* Header */}
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -276,47 +480,58 @@ export function LocationControlCenter() {
                   </div>
                 </div>
 
-              <Button
-                className="w-full"
-                onClick={async () => {
-                  console.log("🔥 Save Configuration clicked")
+            <Button
+            className="w-full"
+            disabled={isSaving}
+            onClick={async () => {
+              console.log("🔥 Save clicked")
 
-                  try {
-                    const res = await fetch("/api/location/save-company-location", {
-                      method: "POST",
-                      credentials: "include", // 🔥 THIS IS THE FIX
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        address: selectedAddress,
-                        lat: selectedLat,
-                        lng: selectedLng,
-                        radius,
-                        checkInTime,
-                        checkOutTime,
-                      }),
-                    })
+              if (!selectedAddress || selectedLat === 0 || selectedLng === 0) {
+                setStatus("error")
+                setMessage("Please select a valid location")
+                return
+              }
 
-                    const data = await res.json()
+              try {
+                setIsSaving(true)
+                setStatus("idle")
 
-                    console.log("✅ Save response:", data)
+                const res = await fetch("/api/location/save-company-location", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    address: selectedAddress,
+                    lat: selectedLat,
+                    lng: selectedLng,
+                    radius,
+                    checkInTime,
+                    checkOutTime,
+                  }),
+                })
 
-                    if (data.success) {
-                      alert("✅ Location applied to all employees")
-                    } else {
-                      alert("❌ Failed to save location")
-                    }
+                const data = await res.json()
 
-                  } catch (err) {
-                    console.error("❌ Save error:", err)
-                    alert("❌ Something went wrong")
-                  }
-                }}
-              >
-                <Save className="mr-1.5 h-4 w-4" />
-                Save Configuration
-              </Button>
+                if (data.success) {
+                  setStatus("success")
+                  setMessage("Location applied successfully")
+                  resetForm()
+                } else {
+                  setStatus("error")
+                  setMessage(data.error || "Failed to save")
+                }
+
+              } catch (err) {
+                console.error(err)
+                setStatus("error")
+                setMessage("Something went wrong")
+              } finally {
+                setIsSaving(false)
+              }
+            }}
+          >
+            {isSaving ? "Saving..." : "Save Configuration"}
+          </Button>
               </div>
             </div>
           </CardContent>
