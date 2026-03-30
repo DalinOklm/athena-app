@@ -34,6 +34,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
+
+import { CSS } from "@dnd-kit/utilities"
+import { GripVertical } from "lucide-react"
 
 interface Employee {
   id: number
@@ -45,6 +62,79 @@ interface Employee {
   checkInTime: string
   checkOutTime: string
   location: string
+}
+
+function SortableCheckpointItem({
+  cp,
+  index,
+  total,
+  selected,
+  onSelect,
+  onUpdate,
+  onRemove,
+}: any) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: cp.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const getColor = () => {
+    if (index === 0) return "bg-emerald-500"
+    if (index === total - 1) return "bg-red-500"
+    return "bg-blue-500"
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex gap-3 border rounded-lg p-3 items-center ${
+        selected ? "border-blue-400 bg-blue-50" : ""
+      }`}
+      onClick={onSelect}
+    >
+      {/* 🔥 DRAG HANDLE */}
+      <button {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4 text-gray-400" />
+      </button>
+
+      {/* 🔥 CIRCLE INDEX */}
+      <div
+        className={`h-7 w-7 rounded-full text-white text-xs flex items-center justify-center ${getColor()}`}
+      >
+        {index + 1}
+      </div>
+
+      {/* ADDRESS */}
+      <Input
+        value={cp.address}
+        placeholder="Search address..."
+        onChange={(e) => onUpdate({ address: e.target.value })}
+      />
+
+      {/* TIME */}
+      <Input
+        type="time"
+        value={cp.arrivalTime}
+        onChange={(e) => onUpdate({ arrivalTime: e.target.value })}
+        className="w-32"
+      />
+
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+      >
+        Remove
+      </Button>
+    </div>
+  )
 }
 
 
@@ -76,6 +166,19 @@ export function LocationControlCenter() {
   const [mapSelectMode, setMapSelectMode] = React.useState<"primary" | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
+  // 🔥 MULTI LOCATION STATE
+  const [checkpoints, setCheckpoints] = React.useState([
+    {
+      id: 1,
+      address: "",
+      lat: 0,
+      lng: 0,
+      arrivalTime: "09:00",
+    },
+  ])
+
+  const [selectedCheckpointId, setSelectedCheckpointId] = React.useState<number | null>(1)
+  const [nextId, setNextId] = React.useState(2)
 // const [employees, setEmployees] = React.useState<Employee[]>([])
 // const [loadingEmployees, setLoadingEmployees] = React.useState(true)
   const [message, setMessage] = React.useState("")
@@ -100,7 +203,20 @@ export function LocationControlCenter() {
     return matchesSearch
   })
 
-  
+  const sensors = useSensors(useSensor(PointerSensor))
+
+const handleDragEnd = (event: any) => {
+  const { active, over } = event
+
+  if (active.id !== over?.id) {
+    setCheckpoints((items) => {
+      const oldIndex = items.findIndex((i) => i.id === active.id)
+      const newIndex = items.findIndex((i) => i.id === over.id)
+
+      return arrayMove(items, oldIndex, newIndex)
+    })
+  }
+}
 
 // 🔥 FETCH EMPLOYEES FROM BACKEND
 React.useEffect(() => {
@@ -232,6 +348,31 @@ React.useEffect(() => {
     setEditingEmployee(null)
     setEditData({})
   }
+
+  
+  const addCheckpoint = () => {
+  const newCheckpoint = {
+    id: nextId,
+    address: "",
+    lat: 0,
+    lng: 0,
+    arrivalTime: "09:00",
+  }
+
+  setCheckpoints((prev) => [...prev, newCheckpoint])
+  setSelectedCheckpointId(nextId)
+  setNextId(nextId + 1)
+}
+
+const updateCheckpoint = (id: number, updates: any) => {
+  setCheckpoints((prev) =>
+    prev.map((cp) => (cp.id === id ? { ...cp, ...updates } : cp))
+  )
+}
+
+const removeCheckpoint = (id: number) => {
+  setCheckpoints((prev) => prev.filter((cp) => cp.id !== id))
+}
 
   const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployees.includes(emp.id))
   const isSomeSelected = selectedEmployees.length > 0 && !isAllSelected
@@ -500,14 +641,15 @@ React.useEffect(() => {
                   method: "POST",
                   credentials: "include",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    address: selectedAddress,
-                    lat: selectedLat,
-                    lng: selectedLng,
-                    radius,
-                    checkInTime,
-                    checkOutTime,
-                  }),
+                body: JSON.stringify({
+                address: selectedAddress,
+                lat: selectedLat,
+                lng: selectedLng,
+                radius,
+                checkInTime,
+                checkOutTime,
+                checkpoints, // 🔥 NEW
+              }),
                 })
 
                 const data = await res.json()
@@ -537,6 +679,62 @@ React.useEffect(() => {
           </CardContent>
         </Card>
 
+
+            <Card>
+  <CardHeader>
+    <CardTitle>Route / Checkpoints</CardTitle>
+    <CardDescription>
+      Add multiple locations and reorder them
+    </CardDescription>
+  </CardHeader>
+
+  <CardContent className="space-y-4">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={checkpoints.map((cp) => cp.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-3">
+          {checkpoints.map((cp, index) => {
+            const isStart = index === 0
+            const isEnd = index === checkpoints.length - 1
+
+            const color = isStart
+              ? "bg-emerald-500"
+              : isEnd
+              ? "bg-red-500"
+              : "bg-blue-500"
+
+            return (
+              <SortableCheckpointItem
+                key={cp.id}
+                cp={cp}
+                index={index}
+                total={checkpoints.length}
+                selected={selectedCheckpointId === cp.id}
+                onSelect={() => setSelectedCheckpointId(cp.id)}
+                onUpdate={(updates: any) =>
+                  updateCheckpoint(cp.id, updates)
+                }
+                onRemove={() => removeCheckpoint(cp.id)}
+              />
+            )
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
+
+    {/* ADD BUTTON */}
+    <Button onClick={addCheckpoint} className="w-fit">
+      + Add Checkpoint
+    </Button>
+  </CardContent>
+</Card>
+
         {/* Middle Section - Map */}
             <Card>
         <CardHeader>
@@ -548,44 +746,70 @@ React.useEffect(() => {
 
         <CardContent>
           <div className="h-[400px] w-full overflow-hidden rounded-xl border">
-           <MapLocationSelector
-            location={
-              selectedAddress
-                ? { address: selectedAddress, lat: selectedLat, lng: selectedLng }
-                : null
-            }
-            radius={radius}
-
-            onLocationSelect={(loc) => {
-              console.log("🔥 Location selected (search → map):", loc)
-
-              setSelectedAddress(loc.address)
-              setSelectedLat(loc.lat)
-              setSelectedLng(loc.lng)
-            }}
-
-            onMapClickSelect={(loc) => {
-              console.log("🔥 Map clicked location:", loc)
-
-              if (!mapSelectMode) {
-                console.log("⚠️ Map click ignored (no mode)")
-                return
+         <MapLocationSelector
+              location={
+                selectedAddress
+                  ? {
+                      address: selectedAddress,
+                      lat: selectedLat,
+                      lng: selectedLng,
+                    }
+                  : null
               }
 
-              setSelectedAddress(loc.address)
-              setSelectedLat(loc.lat)
-              setSelectedLng(loc.lng)
+              radius={radius}
 
-              setMapSelectMode(null) // exit selection mode
-            }}
+              // 🔥 PASS FULL CHECKPOINTS (IMPORTANT FOR MAP RENDER)
+              checkpoints={checkpoints}
 
-            onRadiusChange={(r) => {
-              console.log("🔥 Radius changed:", r)
-              setRadius(r)
-            }}
+              // 🔥 SEARCH → MAP SELECT
+              onLocationSelect={(loc) => {
+                console.log("🔥 Location selected (search → map):", loc)
 
-            checkpoints={[]}
-          />
+                if (selectedCheckpointId !== null) {
+                  console.log("📍 Updating SELECTED checkpoint:", selectedCheckpointId)
+
+                  updateCheckpoint(selectedCheckpointId, {
+                    address: loc.address,
+                    lat: loc.lat,
+                    lng: loc.lng,
+                  })
+                } else {
+                  console.log("📍 Updating MAIN location")
+
+                  setSelectedAddress(loc.address)
+                  setSelectedLat(loc.lat)
+                  setSelectedLng(loc.lng)
+                }
+              }}
+
+              // 🔥 MAP CLICK SELECT
+              onMapClickSelect={(loc) => {
+                console.log("🔥 Map clicked:", loc)
+
+                if (selectedCheckpointId !== null) {
+                  console.log("📍 Map → checkpoint update:", selectedCheckpointId)
+
+                  updateCheckpoint(selectedCheckpointId, {
+                    address: loc.address,
+                    lat: loc.lat,
+                    lng: loc.lng,
+                  })
+                } else {
+                  console.log("📍 Map → main location update")
+
+                  setSelectedAddress(loc.address)
+                  setSelectedLat(loc.lat)
+                  setSelectedLng(loc.lng)
+                }
+              }}
+
+              // 🔥 RADIUS CHANGE
+              onRadiusChange={(r) => {
+                console.log("🔥 Radius changed:", r)
+                setRadius(r)
+              }}
+      />
           </div>
         </CardContent>
       </Card>
