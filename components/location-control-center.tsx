@@ -109,11 +109,48 @@ function SortableCheckpointItem({
       </div>
 
       {/* ADDRESS */}
-      <Input
-        value={cp.address}
-        placeholder="Search address..."
-        onChange={(e) => onUpdate({ address: e.target.value })}
-      />
+    <Input
+      value={cp.address}
+      placeholder="Search address..."
+      onChange={async (e) => {
+        const address = e.target.value
+
+        console.log("📝 CHECKPOINT INPUT:", address)
+
+        onUpdate({ address })
+
+        try {
+          const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
+          )
+
+          const data = await res.json()
+
+          console.log("🌍 GEOCODE RESPONSE:", data)
+
+          const result = data.results?.[0]
+
+          if (!result) {
+            console.warn("⚠️ No geocode result")
+            return
+          }
+
+          const lat = result.geometry.location.lat
+          const lng = result.geometry.location.lng
+
+          console.log("📍 GEOCODED:", { lat, lng })
+
+          onUpdate({
+            address,
+            lat,
+            lng,
+          })
+
+        } catch (err) {
+          console.error("❌ Geocode error:", err)
+        }
+      }}
+    />
 
       {/* TIME */}
       <Input
@@ -534,6 +571,42 @@ React.useEffect(() => {
                       setSelectedLng(loc.lng)
                     }}
                   />
+
+                  <Input
+                    placeholder="Type address manually..."
+                    value={selectedAddress}
+                    onChange={async (e) => {
+                      const address = e.target.value
+
+                      console.log("📝 MAIN INPUT:", address)
+
+                      setSelectedAddress(address)
+
+                      try {
+                        const res = await fetch(
+                          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
+                        )
+
+                        const data = await res.json()
+
+                        const result = data.results?.[0]
+
+                        if (!result) return
+
+                        const lat = result.geometry.location.lat
+                        const lng = result.geometry.location.lng
+
+                        console.log("📍 MAIN GEOCODE:", { lat, lng })
+
+                        setSelectedLat(lat)
+                        setSelectedLng(lng)
+
+                      } catch (err) {
+                        console.error("❌ Main geocode error:", err)
+                      }
+                    }}
+                  />
+
                     </div>
                    <Button
                     variant={mapSelectMode ? "default" : "outline"}
