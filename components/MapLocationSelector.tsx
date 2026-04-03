@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
 
 declare global {
@@ -36,7 +36,6 @@ export default function MapLocationSelector({
   location,
   radius,
   onLocationSelect,
-  onRadiusChange,
   checkpoints = [],
   onMapClickSelect,
 }: Props) {
@@ -51,30 +50,79 @@ export default function MapLocationSelector({
   const onLocationSelectRef = useRef(onLocationSelect)
   const onMapClickSelectRef = useRef(onMapClickSelect)
   const [googleLoaded, setGoogleLoaded] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
+
+  const validPrimary =
+    typeof location?.lat === "number" &&
+    typeof location?.lng === "number" &&
+    Number.isFinite(location.lat) &&
+    Number.isFinite(location.lng) &&
+    (location.lat !== 0 || location.lng !== 0)
+
+  const validCheckpoints = useMemo(
+    () =>
+      checkpoints.filter(
+        (checkpoint) =>
+          typeof checkpoint.lat === "number" &&
+          typeof checkpoint.lng === "number" &&
+          Number.isFinite(checkpoint.lat) &&
+          Number.isFinite(checkpoint.lng) &&
+          (checkpoint.lat !== 0 || checkpoint.lng !== 0)
+      ),
+    [checkpoints]
+  )
+
+  const positionKey = useMemo(
+    () =>
+      JSON.stringify({
+        location: validPrimary ? { lat: location?.lat, lng: location?.lng } : null,
+        checkpoints: validCheckpoints.map((checkpoint) => ({
+          id: checkpoint.id,
+          lat: checkpoint.lat,
+          lng: checkpoint.lng,
+        })),
+        checkpointsLength: validCheckpoints.length,
+      }),
+    [location?.lat, location?.lng, validPrimary, validCheckpoints]
+  )
+
+  const radiusKey = useMemo(
+    () =>
+      JSON.stringify({
+        radius,
+        checkpointRadii: checkpoints.map((checkpoint) => ({
+          id: checkpoint.id,
+          radius: checkpoint.radius || 150,
+        })),
+      }),
+    [radius, checkpoints]
+  )
 
   useEffect(() => {
     onLocationSelectRef.current = onLocationSelect
     onMapClickSelectRef.current = onMapClickSelect
   }, [onLocationSelect, onMapClickSelect])
 
-  const clearPrimaryOverlays = () => {
-    if (markerRef.current) {
-      markerRef.current.setMap(null)
-      markerRef.current = null
-    }
-
+  const clearPrimaryCircle = () => {
     if (circleRef.current) {
       circleRef.current.setMap(null)
       circleRef.current = null
     }
   }
 
-  const clearCheckpointOverlays = () => {
-    checkpointMarkersRef.current.forEach((marker) => marker.setMap(null))
-    checkpointMarkersRef.current = []
-
+  const clearCheckpointCircles = () => {
     checkpointCirclesRef.current.forEach((circle) => circle.setMap(null))
     checkpointCirclesRef.current = []
+  }
+
+  const clearMarkersAndRoute = () => {
+    if (markerRef.current) {
+      markerRef.current.setMap(null)
+      markerRef.current = null
+    }
+
+    checkpointMarkersRef.current.forEach((marker) => marker.setMap(null))
+    checkpointMarkersRef.current = []
 
     if (routeLineRef.current) {
       routeLineRef.current.setMap(null)
@@ -82,12 +130,52 @@ export default function MapLocationSelector({
     }
   }
 
+  const redrawCircles = () => {
+    if (!mapInstance.current || !window.google?.maps) return
+
+    const map = mapInstance.current
+
+    console.log("🔵 RADIUS UPDATE ONLY")
+
+    clearPrimaryCircle()
+    clearCheckpointCircles()
+
+    if (validPrimary && location) {
+      circleRef.current = new window.google.maps.Circle({
+        center: { lat: location.lat, lng: location.lng },
+        radius: radius || 150,
+        map,
+        fillColor: "#3b82f6",
+        fillOpacity: 0.15,
+        strokeColor: "#3b82f6",
+        strokeOpacity: 0.6,
+        strokeWeight: 2,
+      })
+    }
+
+    validCheckpoints.forEach((checkpoint, index) => {
+      const color =
+        index === 0 ? "#10b981" : index === validCheckpoints.length - 1 ? "#ef4444" : "#3b82f6"
+
+      const circle = new window.google.maps.Circle({
+        center: { lat: checkpoint.lat, lng: checkpoint.lng },
+        radius: checkpoint.radius || 150,
+        map,
+        fillColor: color,
+        fillOpacity: 0.1,
+        strokeColor: color,
+        strokeOpacity: 0.5,
+        strokeWeight: 2,
+      })
+
+      checkpointCirclesRef.current.push(circle)
+    })
+  }
+
   useEffect(() => {
     if (!googleLoaded || !mapRef.current || !window.google?.maps || mapInstance.current) {
       return
     }
-
-    console.log("[MapLocationSelector] initializing map")
 
     const map = new window.google.maps.Map(mapRef.current, {
       center: { lat: -26.2041, lng: 28.0473 },
@@ -97,14 +185,14 @@ export default function MapLocationSelector({
     })
 
     mapInstance.current = map
+    setMapReady(true)
+    console.log("✅ MAP READY")
 
     mapClickListenerRef.current = map.addListener("click", async (event: any) => {
       if (!event.latLng) return
 
       const lat = event.latLng.lat()
       const lng = event.latLng.lng()
-
-      console.log("[MapLocationSelector] map click location", { lat, lng })
 
       try {
         const res = await fetch(
@@ -113,14 +201,9 @@ export default function MapLocationSelector({
         const data = await res.json()
         const address = data.results?.[0]?.formatted_address
 
-        if (!address) {
-          console.warn("[MapLocationSelector] reverse geocode returned no address")
-          return
-        }
+        if (!address) return
 
         const nextLocation = { address, lat, lng }
-
-        console.log("[MapLocationSelector] resolved map click", nextLocation)
 
         if (onMapClickSelectRef.current) {
           onMapClickSelectRef.current(nextLocation)
@@ -138,41 +221,21 @@ export default function MapLocationSelector({
         mapClickListenerRef.current = null
       }
 
-      clearPrimaryOverlays()
-      clearCheckpointOverlays()
+      clearMarkersAndRoute()
+      clearPrimaryCircle()
+      clearCheckpointCircles()
     }
   }, [googleLoaded])
 
   useEffect(() => {
-    if (!googleLoaded || !mapInstance.current || !window.google?.maps) {
-      return
-    }
+    if (!googleLoaded || !mapInstance.current || !window.google?.maps) return
 
     const map = mapInstance.current
-    const validPrimary =
-      typeof location?.lat === "number" &&
-      typeof location?.lng === "number" &&
-      Number.isFinite(location.lat) &&
-      Number.isFinite(location.lng) &&
-      (location.lat !== 0 || location.lng !== 0)
 
-    const validCheckpoints = checkpoints.filter(
-      (checkpoint) =>
-        typeof checkpoint.lat === "number" &&
-        typeof checkpoint.lng === "number" &&
-        Number.isFinite(checkpoint.lat) &&
-        Number.isFinite(checkpoint.lng) &&
-        (checkpoint.lat !== 0 || checkpoint.lng !== 0)
-    )
+    console.log("🗺️ MAP POSITION UPDATE TRIGGERED")
+    console.log("📍 PRIMARY LOCATION UPDATED", location)
 
-    console.log("[MapLocationSelector] state-driven redraw", {
-      location,
-      radius,
-      checkpoints: validCheckpoints,
-    })
-
-    clearPrimaryOverlays()
-    clearCheckpointOverlays()
+    clearMarkersAndRoute()
 
     const bounds = new window.google.maps.LatLngBounds()
     const routePath: Array<{ lat: number; lng: number }> = []
@@ -180,25 +243,9 @@ export default function MapLocationSelector({
     if (validPrimary && location) {
       const primaryPosition = { lat: location.lat, lng: location.lng }
 
-      console.log("[MapLocationSelector] drawing primary location", {
-        ...primaryPosition,
-        radius,
-      })
-
       markerRef.current = new window.google.maps.Marker({
         position: primaryPosition,
         map,
-      })
-
-      circleRef.current = new window.google.maps.Circle({
-        center: primaryPosition,
-        radius: radius || 150,
-        map,
-        fillColor: "#3b82f6",
-        fillOpacity: 0.15,
-        strokeColor: "#3b82f6",
-        strokeOpacity: 0.6,
-        strokeWeight: 2,
       })
 
       bounds.extend(primaryPosition)
@@ -206,16 +253,8 @@ export default function MapLocationSelector({
 
     validCheckpoints.forEach((checkpoint, index) => {
       const position = { lat: checkpoint.lat, lng: checkpoint.lng }
-      const isFirst = index === 0
-      const isLast = index === validCheckpoints.length - 1
-      const color = isFirst ? "#10b981" : isLast ? "#ef4444" : "#3b82f6"
-
-      console.log("[MapLocationSelector] drawing checkpoint", {
-        id: checkpoint.id,
-        index,
-        position,
-        radius: checkpoint.radius || 150,
-      })
+      const color =
+        index === 0 ? "#10b981" : index === validCheckpoints.length - 1 ? "#ef4444" : "#3b82f6"
 
       const marker = new window.google.maps.Marker({
         position,
@@ -234,19 +273,7 @@ export default function MapLocationSelector({
         },
       })
 
-      const circle = new window.google.maps.Circle({
-        center: position,
-        radius: checkpoint.radius || 150,
-        map,
-        fillColor: color,
-        fillOpacity: 0.1,
-        strokeColor: color,
-        strokeOpacity: 0.5,
-        strokeWeight: 2,
-      })
-
       checkpointMarkersRef.current.push(marker)
-      checkpointCirclesRef.current.push(circle)
       routePath.push(position)
       bounds.extend(position)
     })
@@ -263,34 +290,29 @@ export default function MapLocationSelector({
       routeLineRef.current.setMap(map)
     }
 
+    redrawCircles()
+
     if (validCheckpoints.length > 0) {
-      console.log("[MapLocationSelector] fitting map to bounds")
+      console.log("🎯 FITTING BOUNDS")
       map.fitBounds(bounds)
 
       window.setTimeout(() => {
-        if (map.getZoom() > 16) {
-          map.setZoom(16)
-        }
+        if (map.getZoom() > 16) map.setZoom(16)
+        if (map.getZoom() < 11) map.setZoom(11)
       }, 150)
       return
     }
 
     if (validPrimary && location) {
-      console.log("[MapLocationSelector] panning to single primary location")
       map.panTo({ lat: location.lat, lng: location.lng })
       map.setZoom(15)
-      return
     }
+  }, [googleLoaded, positionKey])
 
-    if (validCheckpoints.length === 1) {
-      console.log("[MapLocationSelector] panning to single checkpoint")
-      map.panTo({
-        lat: validCheckpoints[0].lat,
-        lng: validCheckpoints[0].lng,
-      })
-      map.setZoom(15)
-    }
-  }, [googleLoaded, location, radius, checkpoints])
+  useEffect(() => {
+    if (!googleLoaded || !mapInstance.current || !window.google?.maps) return
+    redrawCircles()
+  }, [googleLoaded, radiusKey])
 
   return (
     <>
@@ -298,7 +320,6 @@ export default function MapLocationSelector({
         src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&libraries=places,geometry`}
         strategy="afterInteractive"
         onLoad={() => {
-          console.log("[MapLocationSelector] Google Maps script loaded")
           setGoogleLoaded(true)
         }}
         onError={() => {
@@ -307,11 +328,19 @@ export default function MapLocationSelector({
       />
 
       <div className="space-y-4">
-        <div
-          ref={mapRef}
-          className="h-[400px] w-full rounded-xl border"
-          style={{ pointerEvents: "auto" }}
-        />
+        <div className="relative h-[400px] w-full">
+          <div
+            ref={mapRef}
+            className="h-[400px] w-full rounded-xl border"
+            style={{ pointerEvents: "auto" }}
+          />
+
+          {!mapReady && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border bg-background/70 backdrop-blur-sm">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+            </div>
+          )}
+        </div>
 
         <div className="text-xs text-muted-foreground">
           <p>googleLoaded: {googleLoaded ? "YES" : "NO"}</p>

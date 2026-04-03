@@ -628,6 +628,10 @@ React.useEffect(() => {
                     onSelect={(loc) => {
                       console.log("🔥 Address selected from autocomplete:", loc)
 
+                      console.log("🧹 Clearing checkpoints because primary location changed")
+                      setCheckpoints([])
+                      setSelectedCheckpointId(null)
+                      console.log("🧹 CHECKPOINTS CLEARED")
                       setSelectedAddress(loc.address)
                       setSelectedLat(loc.lat)
                       setSelectedLng(loc.lng)
@@ -642,6 +646,10 @@ React.useEffect(() => {
 
                       console.log("[LocationControlCenter] primary input change", address)
 
+                      console.log("🧹 Clearing checkpoints because primary location changed")
+                      setCheckpoints([])
+                      setSelectedCheckpointId(null)
+                      console.log("🧹 CHECKPOINTS CLEARED")
                       setSelectedAddress(address)
 
                       const geocoded = await geocodeAddress(address)
