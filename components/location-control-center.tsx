@@ -183,6 +183,15 @@ function getInitials(name: string) {
     .toUpperCase()
 }
 
+type Checkpoint = {
+  id: number
+  address: string
+  lat: number
+  lng: number
+  arrivalTime: string
+  radius: number
+}
+
 export function LocationControlCenter() {
   const [selectedAddress, setSelectedAddress] = React.useState("")
   const [selectedLat, setSelectedLat] = React.useState(0)
@@ -204,21 +213,52 @@ export function LocationControlCenter() {
   const [isSaving, setIsSaving] = React.useState(false)
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
   // 🔥 MULTI LOCATION STATE
-  const [checkpoints, setCheckpoints] = React.useState([
-    {
-      id: 1,
-      address: "",
-      lat: 0,
-      lng: 0,
-      arrivalTime: "09:00",
-    },
-  ])
+ const [checkpoints, setCheckpoints] = React.useState<Checkpoint[]>([
+  {
+    id: 1,
+    address: "",
+    lat: 0,
+    lng: 0,
+    arrivalTime: "09:00",
+    radius: 150,
+  },
+])
 
   const [selectedCheckpointId, setSelectedCheckpointId] = React.useState<number | null>(1)
   const [nextId, setNextId] = React.useState(2)
 // const [employees, setEmployees] = React.useState<Employee[]>([])
 // const [loadingEmployees, setLoadingEmployees] = React.useState(true)
   const [message, setMessage] = React.useState("")
+  const geocodeAddress = React.useCallback(async (address: string) => {
+    if (!address.trim()) return null
+
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
+      )
+      const data = await res.json()
+      const result = data.results?.[0]
+
+      if (!result) {
+        console.warn("[LocationControlCenter] no geocode result", { address })
+        return null
+      }
+
+      const nextLocation = {
+        address: result.formatted_address || address,
+        lat: result.geometry.location.lat,
+        lng: result.geometry.location.lng,
+      }
+
+      console.log("[LocationControlCenter] geocoded address", nextLocation)
+
+      return nextLocation
+    } catch (error) {
+      console.error("[LocationControlCenter] geocode failed", { address, error })
+      return null
+    }
+  }, [])
+
   const resetForm = () => {
   setSelectedAddress("")
   setSelectedLat(0)
@@ -387,21 +427,30 @@ React.useEffect(() => {
   }
 
   
-  const addCheckpoint = () => {
-  const newCheckpoint = {
+const addCheckpoint = () => {
+  const newCheckpoint: Checkpoint = {
     id: nextId,
     address: "",
     lat: 0,
     lng: 0,
     arrivalTime: "09:00",
+    radius: 150,
   }
 
-  setCheckpoints((prev) => [...prev, newCheckpoint])
+  console.log("➕ ADDING CHECKPOINT:", newCheckpoint)
+
+  setCheckpoints((prev) => {
+    console.log("📦 PREVIOUS STATE:", prev)
+    return [...prev, newCheckpoint]
+  })
+
   setSelectedCheckpointId(nextId)
-  setNextId(nextId + 1)
+  setNextId((prev) => prev + 1)
 }
 
 const updateCheckpoint = (id: number, updates: any) => {
+  console.log("[LocationControlCenter] checkpoint update requested", { id, updates })
+
   setCheckpoints((prev) =>
     prev.map((cp) => (cp.id === id ? { ...cp, ...updates } : cp))
   )
@@ -413,6 +462,19 @@ const removeCheckpoint = (id: number) => {
 
   const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployees.includes(emp.id))
   const isSomeSelected = selectedEmployees.length > 0 && !isAllSelected
+React.useEffect(() => {
+  console.log("[LocationControlCenter] primary location changed", {
+    address: selectedAddress,
+    lat: selectedLat,
+    lng: selectedLng,
+    radius,
+  })
+}, [selectedAddress, selectedLat, selectedLng, radius])
+
+React.useEffect(() => {
+  console.log("[LocationControlCenter] checkpoints changed", checkpoints)
+}, [checkpoints])
+
 React.useEffect(() => {
   const formatTime = (time: any) => {
     console.log("🧪 RAW TIME VALUE:", time, typeof time)
@@ -578,32 +640,17 @@ React.useEffect(() => {
                     onChange={async (e) => {
                       const address = e.target.value
 
-                      console.log("📝 MAIN INPUT:", address)
+                      console.log("[LocationControlCenter] primary input change", address)
 
                       setSelectedAddress(address)
 
-                      try {
-                        const res = await fetch(
-                          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
-                        )
+                      const geocoded = await geocodeAddress(address)
 
-                        const data = await res.json()
+                      if (!geocoded) return
 
-                        const result = data.results?.[0]
-
-                        if (!result) return
-
-                        const lat = result.geometry.location.lat
-                        const lng = result.geometry.location.lng
-
-                        console.log("📍 MAIN GEOCODE:", { lat, lng })
-
-                        setSelectedLat(lat)
-                        setSelectedLng(lng)
-
-                      } catch (err) {
-                        console.error("❌ Main geocode error:", err)
-                      }
+                      setSelectedAddress(geocoded.address)
+                      setSelectedLat(geocoded.lat)
+                      setSelectedLng(geocoded.lng)
                     }}
                   />
 
@@ -753,59 +800,176 @@ React.useEffect(() => {
         </Card>
 
 
-            <Card>
-  <CardHeader>
-    <CardTitle>Route / Checkpoints</CardTitle>
-    <CardDescription>
-      Add multiple locations and reorder them
-    </CardDescription>
-  </CardHeader>
+  <Card>
+        <CardHeader>
+          <CardTitle>Route / Checkpoints</CardTitle>
+          <CardDescription>
+            Add multiple locations and reorder them
+          </CardDescription>
+        </CardHeader>
 
-  <CardContent className="space-y-4">
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext
-        items={checkpoints.map((cp) => cp.id)}
-        strategy={verticalListSortingStrategy}
-      >
-        <div className="space-y-3">
-          {checkpoints.map((cp, index) => {
-            const isStart = index === 0
-            const isEnd = index === checkpoints.length - 1
+        <CardContent className="space-y-4">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event) => {
+              console.log("🔥 DRAG EVENT:", event)
+              handleDragEnd(event)
+            }}
+          >
+            <SortableContext
+              items={checkpoints.map((cp) => cp.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {checkpoints.map((cp, index) => {
+                  const isStart = index === 0
+                  const isEnd = index === checkpoints.length - 1
 
-            const color = isStart
-              ? "bg-emerald-500"
-              : isEnd
-              ? "bg-red-500"
-              : "bg-blue-500"
+                  const color = isStart
+                    ? "bg-emerald-500"
+                    : isEnd
+                    ? "bg-red-500"
+                    : "bg-blue-500"
 
-            return (
-              <SortableCheckpointItem
-                key={cp.id}
-                cp={cp}
-                index={index}
-                total={checkpoints.length}
-                selected={selectedCheckpointId === cp.id}
-                onSelect={() => setSelectedCheckpointId(cp.id)}
-                onUpdate={(updates: any) =>
-                  updateCheckpoint(cp.id, updates)
-                }
-                onRemove={() => removeCheckpoint(cp.id)}
-              />
-            )
-          })}
-        </div>
-      </SortableContext>
-    </DndContext>
+                  console.log("📦 RENDER CHECKPOINT:", {
+                    id: cp.id,
+                    index,
+                    address: cp.address,
+                    radius: cp.radius,
+                  })
 
-    {/* ADD BUTTON */}
-    <Button onClick={addCheckpoint} className="w-fit">
-      + Add Checkpoint
-    </Button>
-  </CardContent>
+                  return (
+                    <div
+                      key={cp.id}
+                      className={`border rounded-xl p-4 space-y-3 cursor-pointer ${
+                        selectedCheckpointId === cp.id
+                          ? "border-blue-500 bg-blue-50"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        console.log("🎯 SELECT CHECKPOINT:", cp.id)
+                        setSelectedCheckpointId(cp.id)
+                      }}
+                    >
+                      {/* HEADER */}
+                      <div className="flex items-center gap-3">
+                        {/* Drag handle */}
+                        <div className="cursor-grab">⋮⋮</div>
+
+                        {/* Circle index */}
+                        <div
+                          className={`w-7 h-7 flex items-center justify-center rounded-full text-white text-sm ${color}`}
+                        >
+                          {index + 1}
+                        </div>
+
+                        <div className="font-medium">
+                          Location {index + 1}
+                        </div>
+                      </div>
+
+                      {/* ADDRESS */}
+                      <Input
+                        placeholder="Search address..."
+                        value={cp.address}
+                        onChange={async (e) => {
+                          const address = e.target.value
+
+                          console.log("[LocationControlCenter] checkpoint input change", {
+                            id: cp.id,
+                            address,
+                          })
+
+                          updateCheckpoint(cp.id, { address })
+
+                          const geocoded = await geocodeAddress(address)
+
+                          if (!geocoded) return
+
+                          updateCheckpoint(cp.id, {
+                            address: geocoded.address,
+                            lat: geocoded.lat,
+                            lng: geocoded.lng,
+                          })
+                        }}
+                      />
+
+                      {/* TIME + RADIUS */}
+                      <div className="flex gap-4 items-center">
+                        {/* TIME */}
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted-foreground">
+                            Arrival Time
+                          </label>
+
+                          <Input
+                            type="time"
+                            value={cp.arrivalTime}
+                            onChange={(e) => {
+                              console.log("⏰ TIME CHANGE:", cp.id, e.target.value)
+                              updateCheckpoint(cp.id, {
+                                arrivalTime: e.target.value,
+                              })
+                            }}
+                            className="w-32"
+                          />
+                        </div>
+
+                        {/* RADIUS */}
+                        <div className="flex flex-col gap-1 w-full">
+                          <label className="text-xs text-muted-foreground">
+                            Radius ({cp.radius || 150}m)
+                          </label>
+
+                          <input
+                            type="range"
+                            min={50}
+                            max={500}
+                            step={10}
+                            value={cp.radius || 150}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+
+                              console.log("📏 RADIUS CHANGE:", cp.id, value)
+
+                              updateCheckpoint(cp.id, { radius: value })
+                            }}
+                            className="w-full"
+                          />
+                        </div>
+
+                        {/* REMOVE */}
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            console.log("❌ REMOVE CHECKPOINT:", cp.id)
+                            removeCheckpoint(cp.id)
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
+
+          {/* ADD BUTTON */}
+          <Button
+            onClick={() => {
+              console.log("➕ ADD CHECKPOINT")
+              addCheckpoint()
+            }}
+            className="w-fit"
+          >
+            + Add Checkpoint
+          </Button>
+        </CardContent>
 </Card>
 
         {/* Middle Section - Map */}
@@ -1098,3 +1262,5 @@ React.useEffect(() => {
     </div>
   )
 }
+
+
