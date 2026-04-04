@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import Script from "next/script"
+import { AnimatedRouteOverlay } from "@/components/AnimatedRouteOverlay"
 
 declare global {
   interface Window {
@@ -51,6 +52,8 @@ export default function MapLocationSelector({
   const onMapClickSelectRef = useRef(onMapClickSelect)
   const [googleLoaded, setGoogleLoaded] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  const [animatedPath, setAnimatedPath] = useState<Array<{ lat: number; lng: number }>>([])
+  const hasFittedBounds = useRef(false)
 
   const validPrimary =
     typeof location?.lat === "number" &&
@@ -235,7 +238,9 @@ export default function MapLocationSelector({
     console.log("🗺️ MAP POSITION UPDATE TRIGGERED")
     console.log("📍 PRIMARY LOCATION UPDATED", location)
 
+    console.log("🧹 Clearing previous routes")
     clearMarkersAndRoute()
+    hasFittedBounds.current = false
 
     const bounds = new window.google.maps.LatLngBounds()
     const routePath: Array<{ lat: number; lng: number }> = []
@@ -278,23 +283,25 @@ export default function MapLocationSelector({
       bounds.extend(position)
     })
 
-    if (routePath.length > 1) {
-      routeLineRef.current = new window.google.maps.Polyline({
-        path: routePath,
-        geodesic: true,
-        strokeColor: "#3b82f6",
-        strokeOpacity: 1,
-        strokeWeight: 3,
-      })
+    if (routeLineRef.current) {
+      routeLineRef.current.setMap(null)
+      routeLineRef.current = null
+    }
 
-      routeLineRef.current.setMap(map)
+    if (routePath.length > 1) {
+      console.log("🗺️ Rendering single route only")
+      console.log("🗺️ Path for animation:", routePath)
+      setAnimatedPath(routePath)
+    } else {
+      setAnimatedPath([])
     }
 
     redrawCircles()
 
-    if (validCheckpoints.length > 0) {
+    if (validCheckpoints.length > 0 && !hasFittedBounds.current) {
       console.log("🎯 FITTING BOUNDS")
       map.fitBounds(bounds)
+      hasFittedBounds.current = true
 
       window.setTimeout(() => {
         if (map.getZoom() > 16) map.setZoom(16)
@@ -334,6 +341,15 @@ export default function MapLocationSelector({
             className="h-[400px] w-full rounded-xl border"
             style={{ pointerEvents: "auto" }}
           />
+
+          {animatedPath.length > 1 && (
+            <AnimatedRouteOverlay
+              path={animatedPath}
+              className="absolute inset-0 z-[1] h-full w-full"
+              width={800}
+              height={400}
+            />
+          )}
 
           {!mapReady && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border bg-background/70 backdrop-blur-sm">

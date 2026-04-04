@@ -12,6 +12,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import AddressSearch from "@/components/AddressSearch"
 import MapLocationSelector from "@/components/MapLocationSelector"
+import { RouteAssignmentCell } from "@/components/RouteAssignmentCell"
+import { RouteAssignmentCard } from "@/components/RouteAssignmentCard"
 import {
   Card,
   CardContent,
@@ -58,10 +60,16 @@ interface Employee {
   department: string
   role: string
   status: "active" | "inactive"
-  assignmentType: "default" | "custom"
+  assignmentType: "default" | "custom" | "route"
   checkInTime: string
   checkOutTime: string
   location: string
+  routeSummary: string[]
+  routeId: number | null
+  locationLat: number | null
+  locationLng: number | null
+  locationRadius: number
+  routeCheckpoints: Checkpoint[]
 }
 
 function SortableCheckpointItem({
@@ -204,13 +212,15 @@ export function LocationControlCenter() {
   const [searchAddress, setSearchAddress] = React.useState("")
   const [employeeSearch, setEmployeeSearch] = React.useState("")
   const [filterType, setFilterType] = React.useState("all")
-  const [selectedEmployees, setSelectedEmployees] = React.useState<number[]>([])
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = React.useState<number[]>([])
   const [employees, setEmployees] = React.useState<any[]>([])
   const [loadingEmployees, setLoadingEmployees] = React.useState(true)
   const [editingEmployee, setEditingEmployee] = React.useState<number | null>(null)
+  const [expandedEmployeeId, setExpandedEmployeeId] = React.useState<number | null>(null)
   const [editData, setEditData] = React.useState<Partial<Employee>>({})
   const [mapSelectMode, setMapSelectMode] = React.useState<"primary" | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isAssigningRoute, setIsAssigningRoute] = React.useState(false)
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
   // 🔥 MULTI LOCATION STATE
  const [checkpoints, setCheckpoints] = React.useState<Checkpoint[]>([
@@ -268,6 +278,107 @@ export function LocationControlCenter() {
   setCheckOutTime("18:00")
 }
 
+  const formatTimeValue = React.useCallback((time: any) => {
+    if (!time) return "--"
+
+    try {
+      if (typeof time === "string" && time.includes("T")) {
+        return time.split("T")[1].split(".")[0].slice(0, 5)
+      }
+
+      if (typeof time === "string") {
+        return time.slice(0, 5)
+      }
+
+      if (typeof time === "object") {
+        const date = new Date(time)
+        const hours = date.getHours().toString().padStart(2, "0")
+        const minutes = date.getMinutes().toString().padStart(2, "0")
+        return `${hours}:${minutes}`
+      }
+
+      return "--"
+    } catch (error) {
+      console.error("❌ Time formatting error:", time, error)
+      return "--"
+    }
+  }, [])
+
+  const mapEmployeeRecord = React.useCallback((emp: any): Employee => {
+    const parsedRouteCheckpoints = emp.route_checkpoints_json
+      ? JSON.parse(emp.route_checkpoints_json)
+      : []
+
+    const routeCheckpoints = Array.isArray(parsedRouteCheckpoints)
+      ? parsedRouteCheckpoints.map((checkpoint: any) => ({
+          id: checkpoint.id ?? checkpoint.sequence_order,
+          address: checkpoint.address,
+          lat: Number(checkpoint.latitude) || 0,
+          lng: Number(checkpoint.longitude) || 0,
+          radius: Number(checkpoint.radius) || 150,
+          arrivalTime: formatTimeValue(checkpoint.arrival_time),
+        }))
+      : []
+
+    const routeSummary = Array.isArray(parsedRouteCheckpoints)
+      ? parsedRouteCheckpoints.map(
+          (checkpoint: any) =>
+            `${checkpoint.sequence_order} -> ${checkpoint.address} (${formatTimeValue(
+              checkpoint.arrival_time
+            )})`
+        )
+      : []
+
+    return {
+      id: emp.id,
+      name:
+        `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
+        emp.email,
+      department: emp.department || "N/A",
+      role: "Employee",
+      status: "active",
+      assignmentType: emp.route_id
+        ? "route"
+        : emp.location_id
+        ? "custom"
+        : "default",
+      checkInTime: formatTimeValue(emp.check_in_time),
+      checkOutTime: formatTimeValue(emp.check_out_time),
+      location: emp.address || "No location assigned",
+      routeSummary,
+      routeId: emp.route_id ?? null,
+      locationLat: emp.latitude ? Number(emp.latitude) : null,
+      locationLng: emp.longitude ? Number(emp.longitude) : null,
+      locationRadius: Number(emp.radius) || 150,
+      routeCheckpoints,
+    }
+  }, [formatTimeValue])
+
+  const fetchEmployees = React.useCallback(async () => {
+    try {
+      console.log("🔥 Fetching employees...")
+      setLoadingEmployees(true)
+
+      const res = await fetch("/api/admin/employees", {
+        credentials: "include",
+      })
+
+      const data = await res.json()
+
+      console.log("👥 FULL API RESPONSE:", data)
+
+      const mapped = data.map((emp: any) => mapEmployeeRecord(emp))
+
+      console.log("✅ FINAL MAPPED:", mapped)
+
+      setEmployees(mapped)
+    } catch (err) {
+      console.error("❌ Failed to fetch employees", err)
+    } finally {
+      setLoadingEmployees(false)
+    }
+  }, [mapEmployeeRecord])
+
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       emp.name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
@@ -277,6 +388,7 @@ export function LocationControlCenter() {
     if (filterType === "all") return matchesSearch
     if (filterType === "default") return matchesSearch && emp.assignmentType === "default"
     if (filterType === "custom") return matchesSearch && emp.assignmentType === "custom"
+    if (filterType === "route") return matchesSearch && emp.assignmentType === "route"
     return matchesSearch
   })
 
@@ -357,6 +469,20 @@ React.useEffect(() => {
       console.log("👥 FULL API RESPONSE:", data)
 
       const mapped = data.map((emp: any) => {
+        const parsedRouteCheckpoints = emp.route_checkpoints_json
+          ? JSON.parse(emp.route_checkpoints_json)
+          : []
+
+        const routeCheckpoints = Array.isArray(parsedRouteCheckpoints)
+          ? parsedRouteCheckpoints.map((checkpoint: any) => ({
+              id: checkpoint.id ?? checkpoint.sequence_order,
+              address: checkpoint.address,
+              lat: Number(checkpoint.latitude) || 0,
+              lng: Number(checkpoint.longitude) || 0,
+              radius: Number(checkpoint.radius) || 150,
+              arrivalTime: formatTime(checkpoint.arrival_time),
+            }))
+          : []
         console.log("👤 EMPLOYEE RAW:", emp)
 
         return {
@@ -367,13 +493,26 @@ React.useEffect(() => {
           department: emp.department || "N/A",
           role: "Employee",
           status: "active",
-          assignmentType: emp.location_id ? "custom" : "default",
+          assignmentType: emp.route_id
+            ? "route"
+            : emp.location_id
+            ? "custom"
+            : "default",
 
           // 🔥 FIXED TIMES
           checkInTime: formatTime(emp.check_in_time),
           checkOutTime: formatTime(emp.check_out_time),
 
           location: emp.address || "No location assigned",
+          routeSummary: routeCheckpoints.map(
+            (checkpoint: Checkpoint, index: number) =>
+              `${index + 1} -> ${checkpoint.address} (${checkpoint.arrivalTime})`
+          ),
+          routeId: emp.route_id ?? null,
+          locationLat: emp.latitude ? Number(emp.latitude) : null,
+          locationLng: emp.longitude ? Number(emp.longitude) : null,
+          locationRadius: Number(emp.radius) || 150,
+          routeCheckpoints,
         }
       })
 
@@ -393,17 +532,17 @@ React.useEffect(() => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedEmployees(filteredEmployees.map((emp) => emp.id))
+      setSelectedEmployeeIds(filteredEmployees.map((emp) => emp.id))
     } else {
-      setSelectedEmployees([])
+      setSelectedEmployeeIds([])
     }
   }
 
   const handleSelectEmployee = (employeeId: number, checked: boolean) => {
     if (checked) {
-      setSelectedEmployees([...selectedEmployees, employeeId])
+      setSelectedEmployeeIds([...selectedEmployeeIds, employeeId])
     } else {
-      setSelectedEmployees(selectedEmployees.filter((id) => id !== employeeId))
+      setSelectedEmployeeIds(selectedEmployeeIds.filter((id) => id !== employeeId))
     }
   }
 
@@ -460,8 +599,90 @@ const removeCheckpoint = (id: number) => {
   setCheckpoints((prev) => prev.filter((cp) => cp.id !== id))
 }
 
-  const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployees.includes(emp.id))
-  const isSomeSelected = selectedEmployees.length > 0 && !isAllSelected
+const handleAssignRoute = async () => {
+  const validCheckpoints = checkpoints.filter(
+    (checkpoint) =>
+      checkpoint.address &&
+      Number.isFinite(checkpoint.lat) &&
+      Number.isFinite(checkpoint.lng) &&
+      (checkpoint.lat !== 0 || checkpoint.lng !== 0)
+  )
+
+  if (selectedEmployeeIds.length === 0) {
+    setStatus("error")
+    setMessage("Select at least one employee before assigning a route.")
+    return
+  }
+
+  if (validCheckpoints.length === 0) {
+    setStatus("error")
+    setMessage("Add at least one valid checkpoint before assigning a route.")
+    return
+  }
+
+  try {
+    setIsAssigningRoute(true)
+    setStatus("idle")
+
+    const res = await fetch("/api/location/save-multi-route", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        employeeIds: selectedEmployeeIds,
+        checkpoints: validCheckpoints,
+      }),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to assign route")
+    }
+
+    setStatus("success")
+    setMessage("Route assigned to selected employees.")
+    await fetchEmployees()
+  } catch (error) {
+    console.error("❌ Failed to assign route", error)
+    setStatus("error")
+    setMessage(error instanceof Error ? error.message : "Failed to assign route")
+  } finally {
+    setIsAssigningRoute(false)
+  }
+}
+
+  const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployeeIds.includes(emp.id))
+  const isSomeSelected = selectedEmployeeIds.length > 0 && !isAllSelected
+  const previewEmployee = employees.find((employee) => employee.id === expandedEmployeeId) ?? null
+  const previewLocation =
+    previewEmployee?.assignmentType === "route"
+      ? null
+      : previewEmployee &&
+        previewEmployee.locationLat !== null &&
+        previewEmployee.locationLng !== null
+      ? {
+          address: previewEmployee.location,
+          lat: previewEmployee.locationLat,
+          lng: previewEmployee.locationLng,
+        }
+      : selectedAddress
+      ? {
+          address: selectedAddress,
+          lat: selectedLat,
+          lng: selectedLng,
+        }
+      : null
+  const previewRadius =
+    previewEmployee?.assignmentType === "route"
+      ? radius
+      : previewEmployee?.locationRadius || radius
+  const previewCheckpoints =
+    previewEmployee?.assignmentType === "route"
+      ? previewEmployee.routeCheckpoints
+      : checkpoints
 React.useEffect(() => {
   console.log("[LocationControlCenter] primary location changed", {
     address: selectedAddress,
@@ -476,98 +697,9 @@ React.useEffect(() => {
 }, [checkpoints])
 
 React.useEffect(() => {
-  const formatTime = (time: any) => {
-    console.log("🧪 RAW TIME VALUE:", time, typeof time)
-
-    if (!time) return "--"
-
-    try {
-      // 🔥 CASE 1: ISO string (your current case)
-      if (typeof time === "string" && time.includes("T")) {
-        const timePart = time.split("T")[1] // "06:00:00.000Z"
-        const clean = timePart.split(".")[0] // "06:00:00"
-        const final = clean.slice(0, 5) // "06:00"
-
-        console.log("✅ ISO → FINAL:", final)
-
-        return final
-      }
-
-      // 🔥 CASE 2: Normal SQL time string
-      if (typeof time === "string") {
-        const final = time.slice(0, 5)
-
-        console.log("✅ STRING → FINAL:", final)
-
-        return final
-      }
-
-      // 🔥 CASE 3: Date object fallback
-      if (typeof time === "object") {
-        const date = new Date(time)
-
-        const hours = date.getHours().toString().padStart(2, "0")
-        const minutes = date.getMinutes().toString().padStart(2, "0")
-
-        const final = `${hours}:${minutes}`
-
-        console.log("✅ DATE → FINAL:", final)
-
-        return final
-      }
-
-      return "--"
-    } catch (err) {
-      console.error("❌ Time formatting error:", time, err)
-      return "--"
-    }
-  }
-
-  const fetchEmployees = async () => {
-    try {
-      console.log("🔥 Fetching employees...")
-
-      const res = await fetch("/api/admin/employees", {
-        credentials: "include",
-      })
-
-      const data = await res.json()
-
-      console.log("👥 FULL API RESPONSE:", data)
-
-      const mapped = data.map((emp: any) => {
-        console.log("👤 EMPLOYEE RAW:", emp)
-
-        return {
-          id: emp.id,
-          name:
-            `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
-            emp.email,
-          department: emp.department || "N/A",
-          role: "Employee",
-          status: "active",
-          assignmentType: emp.location_id ? "custom" : "default",
-
-          // 🔥 FIXED TIMES
-          checkInTime: formatTime(emp.check_in_time),
-          checkOutTime: formatTime(emp.check_out_time),
-
-          location: emp.address || "No location assigned",
-        }
-      })
-
-      console.log("✅ FINAL MAPPED:", mapped)
-
-      setEmployees(mapped)
-    } catch (err) {
-      console.error("❌ Failed to fetch employees", err)
-    } finally {
-      setLoadingEmployees(false)
-    }
-  }
-
   fetchEmployees()
-}, [])
+}, [fetchEmployees])
+
 
 
   return (
@@ -992,23 +1124,16 @@ React.useEffect(() => {
         <CardContent>
           <div className="h-[400px] w-full overflow-hidden rounded-xl border">
          <MapLocationSelector
-              location={
-                selectedAddress
-                  ? {
-                      address: selectedAddress,
-                      lat: selectedLat,
-                      lng: selectedLng,
-                    }
-                  : null
-              }
+              location={previewLocation}
 
-              radius={radius}
+              radius={previewRadius}
 
               // 🔥 PASS FULL CHECKPOINTS (IMPORTANT FOR MAP RENDER)
-              checkpoints={checkpoints}
+              checkpoints={previewCheckpoints}
 
               // 🔥 SEARCH → MAP SELECT
               onLocationSelect={(loc) => {
+                if (previewEmployee) return
                 console.log("🔥 Location selected (search → map):", loc)
 
                 if (selectedCheckpointId !== null) {
@@ -1030,6 +1155,7 @@ React.useEffect(() => {
 
               // 🔥 MAP CLICK SELECT
               onMapClickSelect={(loc) => {
+                if (previewEmployee) return
                 console.log("🔥 Map clicked:", loc)
 
                 if (selectedCheckpointId !== null) {
@@ -1088,6 +1214,7 @@ React.useEffect(() => {
                     <SelectItem value="all">All Employees</SelectItem>
                     <SelectItem value="default">Company Default</SelectItem>
                     <SelectItem value="custom">Custom</SelectItem>
+                    <SelectItem value="route">Route</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1117,7 +1244,7 @@ React.useEffect(() => {
                       <TableHead>Assignment</TableHead>
                       <TableHead>Check-in</TableHead>
                       <TableHead>Check-out</TableHead>
-                      <TableHead>Location</TableHead>
+                      <TableHead>Assignment Details</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1125,14 +1252,26 @@ React.useEffect(() => {
                     {filteredEmployees.map((employee) => (
                       <React.Fragment key={employee.id}>
                         <TableRow
-                          data-state={selectedEmployees.includes(employee.id) ? "selected" : undefined}
-                          className={employee.assignmentType === "custom" ? "bg-blue-50/50 dark:bg-blue-950/20" : ""}
+                          data-state={selectedEmployeeIds.includes(employee.id) ? "selected" : undefined}
+                          className={
+                            employee.assignmentType === "route"
+                              ? "cursor-pointer bg-amber-50/40"
+                              : employee.assignmentType === "custom"
+                              ? "cursor-pointer bg-blue-50/50 dark:bg-blue-950/20"
+                              : "cursor-pointer"
+                          }
+                          onClick={() =>
+                            setExpandedEmployeeId((current) =>
+                              current === employee.id ? null : employee.id
+                            )
+                          }
                         >
                           <TableCell>
                             <Checkbox
-                              checked={selectedEmployees.includes(employee.id)}
+                              checked={selectedEmployeeIds.includes(employee.id)}
                               onCheckedChange={(checked) => handleSelectEmployee(employee.id, checked as boolean)}
                               aria-label={`Select ${employee.name}`}
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </TableCell>
                           <TableCell>
@@ -1160,21 +1299,46 @@ React.useEffect(() => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={
-                                employee.assignmentType === "default"
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
-                                  : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400"
-                              }
-                            >
-                              {employee.assignmentType === "default" ? "Company Default" : "Custom"}
-                            </Badge>
+                            {employee.assignmentType === "route" ? (
+                              <>
+                                {console.log("📍 Route passed to UI:", {
+                                  checkpoints: employee.routeCheckpoints.map((checkpoint: Checkpoint) => ({
+                                    address: checkpoint.address,
+                                    arrivalTime: checkpoint.arrivalTime,
+                                  })),
+                                })}
+                                <RouteAssignmentCell
+                                  route={{
+                                    checkpoints: employee.routeCheckpoints.map((checkpoint: Checkpoint) => ({
+                                      address: checkpoint.address,
+                                      arrivalTime: checkpoint.arrivalTime,
+                                    })),
+                                  }}
+                                />
+                              </>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className={
+                                  employee.assignmentType === "default"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+                                    : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400"
+                                }
+                              >
+                                {employee.assignmentType === "default" ? "Company Default" : "Custom"}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="font-mono text-sm">{employee.checkInTime}</TableCell>
                           <TableCell className="font-mono text-sm">{employee.checkOutTime}</TableCell>
-                          <TableCell className="max-w-[150px] truncate text-muted-foreground" title={employee.location}>
-                            {employee.location}
+                          <TableCell className="max-w-[220px] text-muted-foreground">
+                            {employee.assignmentType === "route" ? (
+                              <span>{employee.routeSummary.length} checkpoint route</span>
+                            ) : (
+                              <span className="truncate block" title={employee.location}>
+                                {employee.location}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1183,15 +1347,17 @@ React.useEffect(() => {
                                 size="sm"
                                 onClick={() => handleOverride(employee)}
                                 className="h-8 px-2"
+                                onMouseDown={(e) => e.stopPropagation()}
                               >
                                 <Pencil className="h-3.5 w-3.5 mr-1" />
                                 Override
                               </Button>
-                              {employee.assignmentType === "custom" && (
+                              {employee.assignmentType !== "default" && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                  onMouseDown={(e) => e.stopPropagation()}
                                 >
                                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                                   Reset
@@ -1200,6 +1366,39 @@ React.useEffect(() => {
                             </div>
                           </TableCell>
                         </TableRow>
+                        {expandedEmployeeId === employee.id && (
+                          <TableRow className="bg-muted/30">
+                            <TableCell colSpan={10}>
+                              {employee.assignmentType === "route" ? (
+                                <div className="space-y-3 py-3">
+                                  <div>
+                                    <p className="text-sm font-medium">Assigned Route</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Checkpoints for {employee.name}
+                                    </p>
+                                  </div>
+                                  <RouteAssignmentCard
+                                    route={{
+                                      checkpoints: employee.routeCheckpoints.map((checkpoint: Checkpoint) => ({
+                                        address: checkpoint.address,
+                                        arrivalTime: checkpoint.arrivalTime,
+                                      })),
+                                    }}
+                                    className="border bg-background"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="space-y-2 py-2">
+                                  <p className="text-sm font-medium">Assigned Location</p>
+                                  <div className="text-sm text-muted-foreground">{employee.location}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    Radius: {employee.locationRadius}m
+                                  </div>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )}
                         {/* Inline Edit Row */}
                         {editingEmployee === employee.id && (
                           <TableRow className="bg-muted/50">
@@ -1255,12 +1454,17 @@ React.useEffect(() => {
             {/* Summary */}
             <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
               <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{selectedEmployees.length}</span> of{" "}
+                <span className="font-medium text-foreground">{selectedEmployeeIds.length}</span> of{" "}
                 <span className="font-medium text-foreground">{filteredEmployees.length}</span> employees selected
               </p>
-              {selectedEmployees.length > 0 && (
-                <Button variant="outline" size="sm">
-                  Bulk Override Selected
+              {selectedEmployeeIds.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isAssigningRoute}
+                  onClick={handleAssignRoute}
+                >
+                  {isAssigningRoute ? "Assigning..." : "Assign Route to Selected Employees"}
                 </Button>
               )}
             </div>
