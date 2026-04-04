@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, MapPin, Clock, ChevronLeft, Save, RotateCcw, Pencil, X, Check, ShieldAlert, LogIn, Loader2 } from "lucide-react"
+import { Search, MapPin, Clock, ChevronLeft, Save, RotateCcw, Pencil, X, Check, ShieldAlert, LogIn, Loader2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -71,6 +71,8 @@ interface Employee {
   locationRadius: number
   routeCheckpoints: Checkpoint[]
 }
+
+type ApplyMode = "single" | "all" | "selected"
 
 function SortableCheckpointItem({
   cp,
@@ -209,19 +211,24 @@ export function LocationControlCenter() {
   const [checkInTime, setCheckInTime] = React.useState("09:00")
   const [checkOutTime, setCheckOutTime] = React.useState("18:00")
   const [sameLocation, setSameLocation] = React.useState(true)
-  const [searchAddress, setSearchAddress] = React.useState("")
   const [employeeSearch, setEmployeeSearch] = React.useState("")
   const [filterType, setFilterType] = React.useState("all")
   const [selectedEmployeeIds, setSelectedEmployeeIds] = React.useState<number[]>([])
-  const [employees, setEmployees] = React.useState<any[]>([])
+  const [employees, setEmployees] = React.useState<Employee[]>([])
   const [loadingEmployees, setLoadingEmployees] = React.useState(true)
   const [authRequired, setAuthRequired] = React.useState(false)
   const [editingEmployee, setEditingEmployee] = React.useState<number | null>(null)
   const [expandedEmployeeId, setExpandedEmployeeId] = React.useState<number | null>(null)
+  const [selectedEmployeeForRoute, setSelectedEmployeeForRoute] = React.useState<number | null>(null)
   const [editData, setEditData] = React.useState<Partial<Employee>>({})
   const [mapSelectMode, setMapSelectMode] = React.useState<"primary" | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isAssigningRoute, setIsAssigningRoute] = React.useState(false)
+  const [isLoadingRoute, setIsLoadingRoute] = React.useState(false)
+  const [isUpdatingRoute, setIsUpdatingRoute] = React.useState(false)
+  const [activeRouteId, setActiveRouteId] = React.useState<number | null>(null)
+  const [applyMode, setApplyMode] = React.useState<ApplyMode>("single")
+  const [extraUserIds, setExtraUserIds] = React.useState<number[]>([])
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
   // 🔥 MULTI LOCATION STATE
  const [checkpoints, setCheckpoints] = React.useState<Checkpoint[]>([
@@ -416,129 +423,6 @@ const handleDragEnd = (event: any) => {
   }
 }
 
-// 🔥 FETCH EMPLOYEES FROM BACKEND
-React.useEffect(() => {
-  const formatTime = (time: any) => {
-    console.log("🧪 RAW TIME VALUE:", time, typeof time)
-
-    if (!time) return "--"
-
-    try {
-      // 🔥 CASE 1: ISO string (your current case)
-      if (typeof time === "string" && time.includes("T")) {
-        const timePart = time.split("T")[1] // "06:00:00.000Z"
-        const clean = timePart.split(".")[0] // "06:00:00"
-        const final = clean.slice(0, 5) // "06:00"
-
-        console.log("✅ ISO → FINAL:", final)
-
-        return final
-      }
-
-      // 🔥 CASE 2: Normal SQL time string
-      if (typeof time === "string") {
-        const final = time.slice(0, 5)
-
-        console.log("✅ STRING → FINAL:", final)
-
-        return final
-      }
-
-      // 🔥 CASE 3: Date object fallback
-      if (typeof time === "object") {
-        const date = new Date(time)
-
-        const hours = date.getHours().toString().padStart(2, "0")
-        const minutes = date.getMinutes().toString().padStart(2, "0")
-
-        const final = `${hours}:${minutes}`
-
-        console.log("✅ DATE → FINAL:", final)
-
-        return final
-      }
-
-      return "--"
-    } catch (err) {
-      console.error("❌ Time formatting error:", time, err)
-      return "--"
-    }
-  }
-
-  const fetchEmployees = async () => {
-    try {
-      console.log("🔥 Fetching employees...")
-
-      const res = await fetch("/api/admin/employees", {
-        credentials: "include",
-      })
-
-      const data = await res.json()
-
-      console.log("👥 FULL API RESPONSE:", data)
-
-      const mapped = data.map((emp: any) => {
-        const parsedRouteCheckpoints = emp.route_checkpoints_json
-          ? JSON.parse(emp.route_checkpoints_json)
-          : []
-
-        const routeCheckpoints = Array.isArray(parsedRouteCheckpoints)
-          ? parsedRouteCheckpoints.map((checkpoint: any) => ({
-              id: checkpoint.id ?? checkpoint.sequence_order,
-              address: checkpoint.address,
-              lat: Number(checkpoint.latitude) || 0,
-              lng: Number(checkpoint.longitude) || 0,
-              radius: Number(checkpoint.radius) || 150,
-              arrivalTime: formatTime(checkpoint.arrival_time),
-            }))
-          : []
-        console.log("👤 EMPLOYEE RAW:", emp)
-
-        return {
-          id: emp.id,
-          name:
-            `${emp.first_name || ""} ${emp.last_name || ""}`.trim() ||
-            emp.email,
-          department: emp.department || "N/A",
-          role: "Employee",
-          status: "active",
-          assignmentType: emp.route_id
-            ? "route"
-            : emp.location_id
-            ? "custom"
-            : "default",
-
-          // 🔥 FIXED TIMES
-          checkInTime: formatTime(emp.check_in_time),
-          checkOutTime: formatTime(emp.check_out_time),
-
-          location: emp.address || "No location assigned",
-          routeSummary: routeCheckpoints.map(
-            (checkpoint: Checkpoint, index: number) =>
-              `${index + 1} -> ${checkpoint.address} (${checkpoint.arrivalTime})`
-          ),
-          routeId: emp.route_id ?? null,
-          locationLat: emp.latitude ? Number(emp.latitude) : null,
-          locationLng: emp.longitude ? Number(emp.longitude) : null,
-          locationRadius: Number(emp.radius) || 150,
-          routeCheckpoints,
-        }
-      })
-
-      console.log("✅ FINAL MAPPED:", mapped)
-
-      setEmployees(mapped)
-    } catch (err) {
-      console.error("❌ Failed to fetch employees", err)
-    } finally {
-      setLoadingEmployees(false)
-    }
-  }
-
-  fetchEmployees()
-}, [])
-
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       setSelectedEmployeeIds(filteredEmployees.map((emp) => emp.id))
@@ -549,9 +433,9 @@ React.useEffect(() => {
 
   const handleSelectEmployee = (employeeId: number, checked: boolean) => {
     if (checked) {
-      setSelectedEmployeeIds([...selectedEmployeeIds, employeeId])
+      setSelectedEmployeeIds((prev) => (prev.includes(employeeId) ? prev : [...prev, employeeId]))
     } else {
-      setSelectedEmployeeIds(selectedEmployeeIds.filter((id) => id !== employeeId))
+      setSelectedEmployeeIds((prev) => prev.filter((id) => id !== employeeId))
     }
   }
 
@@ -663,6 +547,174 @@ const handleAssignRoute = async () => {
   }
 }
 
+const handleSelectExtraUser = (employeeId: number, checked: boolean) => {
+  if (checked) {
+    setExtraUserIds((prev) => (prev.includes(employeeId) ? prev : [...prev, employeeId]))
+    return
+  }
+
+  setExtraUserIds((prev) => prev.filter((id) => id !== employeeId))
+}
+
+const loadEmployeeRoute = React.useCallback(async (employeeId: number) => {
+  try {
+    setIsLoadingRoute(true)
+    console.log("👤 Selected employee:", employeeId)
+
+    const res = await fetch(`/api/location/get-employee-route?employeeId=${employeeId}`, {
+      credentials: "include",
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to load employee route")
+    }
+
+    console.log("📦 Loaded route:", data)
+
+    const loadedCheckpoints = Array.isArray(data.checkpoints)
+      ? [...data.checkpoints]
+          .sort((a, b) => a.sequence_order - b.sequence_order)
+          .map((checkpoint: any, index: number) => ({
+            id: Number(checkpoint.id) || index + 1,
+            address: checkpoint.address || "",
+            lat: Number(checkpoint.lat) || 0,
+            lng: Number(checkpoint.lng) || 0,
+            radius: Number(checkpoint.radius) || 150,
+            arrivalTime: String(checkpoint.arrivalTime || "09:00").slice(0, 5),
+          }))
+      : []
+
+    setActiveRouteId(data.routeId ?? null)
+    setCheckpoints(loadedCheckpoints)
+    setSelectedCheckpointId(loadedCheckpoints[0]?.id ?? null)
+    setNextId(
+      loadedCheckpoints.length > 0
+        ? Math.max(...loadedCheckpoints.map((checkpoint) => checkpoint.id)) + 1
+        : 1
+    )
+    setApplyMode("single")
+    setExtraUserIds([])
+  } catch (error) {
+    console.error("❌ Failed to load employee route", error)
+    setStatus("error")
+    setMessage(error instanceof Error ? error.message : "Failed to load employee route")
+  } finally {
+    setIsLoadingRoute(false)
+  }
+}, [])
+
+const handleEmployeeSelection = async (employee: Employee) => {
+  const isClosing = expandedEmployeeId === employee.id
+
+  setExpandedEmployeeId(isClosing ? null : employee.id)
+  setSelectedEmployeeForRoute(isClosing ? null : employee.id)
+  console.log("👤 Selected employee:", employee.id)
+
+  if (isClosing) {
+    setActiveRouteId(null)
+    setApplyMode("single")
+    setExtraUserIds([])
+    return
+  }
+
+  if (employee.assignmentType !== "route" || !employee.routeId) {
+    setActiveRouteId(null)
+    setApplyMode("single")
+    setExtraUserIds([])
+    return
+  }
+
+  await loadEmployeeRoute(employee.id)
+}
+
+const handleEmployeeRowClick = async (employee: Employee) => {
+  setExpandedEmployeeId((current) => (current === employee.id ? null : employee.id))
+  setSelectedEmployeeForRoute(employee.id)
+  console.log("👤 Selected employee:", employee.id)
+
+  if (employee.assignmentType !== "route" || !employee.routeId) {
+    setActiveRouteId(null)
+    return
+  }
+
+  await loadEmployeeRoute(employee.id)
+}
+
+const handleSaveUpdatedRoute = async () => {
+  const validCheckpoints = checkpoints
+    .map((checkpoint, index) => ({
+      ...checkpoint,
+      sequence_order: index + 1,
+    }))
+    .filter(
+      (checkpoint) =>
+        checkpoint.address &&
+        Number.isFinite(checkpoint.lat) &&
+        Number.isFinite(checkpoint.lng) &&
+        (checkpoint.lat !== 0 || checkpoint.lng !== 0)
+    )
+
+  if (!activeRouteId) {
+    setStatus("error")
+    setMessage("Select an employee route before saving updates.")
+    return
+  }
+
+  if (validCheckpoints.length === 0) {
+    setStatus("error")
+    setMessage("Add at least one valid checkpoint before saving updates.")
+    return
+  }
+
+  const payload = {
+    routeId: activeRouteId,
+    employeeId: selectedEmployeeForRoute,
+    checkpoints: validCheckpoints,
+    applyMode,
+    extraUserIds,
+  }
+
+  try {
+    setIsUpdatingRoute(true)
+    console.log("💾 Saving updated route:", payload)
+    console.log(
+      "👥 Applying to users:",
+      applyMode === "selected" ? extraUserIds : [selectedEmployeeForRoute]
+    )
+
+    const res = await fetch("/api/location/update-route", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const data = await res.json()
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to update route")
+    }
+
+    setStatus("success")
+    setMessage("Route updated successfully.")
+    await fetchEmployees()
+
+    if (selectedEmployeeForRoute) {
+      await loadEmployeeRoute(selectedEmployeeForRoute)
+    }
+  } catch (error) {
+    console.error("❌ Failed to update route", error)
+    setStatus("error")
+    setMessage(error instanceof Error ? error.message : "Failed to update route")
+  } finally {
+    setIsUpdatingRoute(false)
+  }
+}
+
   const isAllSelected = filteredEmployees.length > 0 && filteredEmployees.every((emp) => selectedEmployeeIds.includes(emp.id))
   const isSomeSelected = selectedEmployeeIds.length > 0 && !isAllSelected
   const previewEmployee = employees.find((employee) => employee.id === expandedEmployeeId) ?? null
@@ -688,10 +740,18 @@ const handleAssignRoute = async () => {
     previewEmployee?.assignmentType === "route"
       ? radius
       : previewEmployee?.locationRadius || radius
+  const isRouteEditingSelection =
+    previewEmployee?.assignmentType === "route" &&
+    selectedEmployeeForRoute === previewEmployee?.id &&
+    activeRouteId !== null
+  const isMapPreviewLocked = Boolean(previewEmployee) && !isRouteEditingSelection
   const previewCheckpoints =
     previewEmployee?.assignmentType === "route"
-      ? previewEmployee.routeCheckpoints
+      ? selectedEmployeeForRoute === previewEmployee.id
+        ? checkpoints
+        : previewEmployee.routeCheckpoints
       : checkpoints
+  const availableAdditionalUsers = employees.filter((employee) => employee.id !== selectedEmployeeForRoute)
 React.useEffect(() => {
   console.log("[LocationControlCenter] primary location changed", {
     address: selectedAddress,
@@ -703,6 +763,11 @@ React.useEffect(() => {
 
 React.useEffect(() => {
   console.log("[LocationControlCenter] checkpoints changed", checkpoints)
+}, [checkpoints])
+
+React.useEffect(() => {
+  console.log("✏️ Editing route:", checkpoints)
+  console.log("🗺️ Syncing map with route:", checkpoints)
 }, [checkpoints])
 
 React.useEffect(() => {
@@ -1118,6 +1183,78 @@ React.useEffect(() => {
           >
             + Add Checkpoint
           </Button>
+
+          {selectedEmployeeForRoute && activeRouteId && (
+            <div className="space-y-4 rounded-xl border bg-muted/30 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-medium">Route Editing</p>
+                  <p className="text-xs text-muted-foreground">
+                    Editing route for{" "}
+                    {employees.find((employee) => employee.id === selectedEmployeeForRoute)?.name || "selected employee"}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleSaveUpdatedRoute}
+                  disabled={isUpdatingRoute || isLoadingRoute}
+                >
+                  {isUpdatingRoute ? "Saving..." : "Save Updated Route"}
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Apply changes to:</Label>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="flex items-center gap-3 rounded-lg border bg-background p-3">
+                    <Checkbox
+                      checked={applyMode === "single"}
+                      onCheckedChange={() => setApplyMode("single")}
+                    />
+                    <span className="text-sm">Only this user</span>
+                  </label>
+                  <label className="flex items-center gap-3 rounded-lg border bg-background p-3">
+                    <Checkbox
+                      checked={applyMode === "all"}
+                      onCheckedChange={() => setApplyMode("all")}
+                    />
+                    <span className="text-sm">All users assigned to this route</span>
+                  </label>
+                  <label className="flex items-center gap-3 rounded-lg border bg-background p-3">
+                    <Checkbox
+                      checked={applyMode === "selected"}
+                      onCheckedChange={() => setApplyMode("selected")}
+                    />
+                    <span className="text-sm">Select additional users</span>
+                  </label>
+                </div>
+              </div>
+
+              {applyMode === "selected" && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Users className="h-4 w-4" />
+                    Assign additional users
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {availableAdditionalUsers.map((employee) => (
+                      <label
+                        key={employee.id}
+                        className="flex items-center gap-3 rounded-lg border bg-background p-3"
+                      >
+                        <Checkbox
+                          checked={extraUserIds.includes(employee.id)}
+                          onCheckedChange={(checked) =>
+                            handleSelectExtraUser(employee.id, checked as boolean)
+                          }
+                        />
+                        <span className="text-sm">{employee.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
 </Card>
 
@@ -1142,7 +1279,7 @@ React.useEffect(() => {
 
               // 🔥 SEARCH → MAP SELECT
               onLocationSelect={(loc) => {
-                if (previewEmployee) return
+                if (isMapPreviewLocked) return
                 console.log("🔥 Location selected (search → map):", loc)
 
                 if (selectedCheckpointId !== null) {
@@ -1164,7 +1301,7 @@ React.useEffect(() => {
 
               // 🔥 MAP CLICK SELECT
               onMapClickSelect={(loc) => {
-                if (previewEmployee) return
+                if (isMapPreviewLocked) return
                 console.log("🔥 Map clicked:", loc)
 
                 if (selectedCheckpointId !== null) {
@@ -1321,11 +1458,9 @@ React.useEffect(() => {
                               ? "cursor-pointer bg-blue-50/50 dark:bg-blue-950/20"
                               : "cursor-pointer"
                           }
-                          onClick={() =>
-                            setExpandedEmployeeId((current) =>
-                              current === employee.id ? null : employee.id
-                            )
-                          }
+                          onClick={() => {
+                            void handleEmployeeSelection(employee)
+                          }}
                         >
                           <TableCell>
                             <Checkbox
@@ -1440,7 +1575,11 @@ React.useEffect(() => {
                                   </div>
                                   <RouteAssignmentCard
                                     route={{
-                                      checkpoints: employee.routeCheckpoints.map((checkpoint: Checkpoint) => ({
+                                      checkpoints: (
+                                        selectedEmployeeForRoute === employee.id && activeRouteId
+                                          ? checkpoints
+                                          : employee.routeCheckpoints
+                                      ).map((checkpoint: Checkpoint) => ({
                                         address: checkpoint.address,
                                         arrivalTime: checkpoint.arrivalTime,
                                       })),

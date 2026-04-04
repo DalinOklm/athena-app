@@ -11,6 +11,15 @@ type RouteCheckpointInput = {
   arrivalTime: string;
 };
 
+type NormalizedCheckpoint = {
+  sequenceOrder: number;
+  address: string;
+  lat: number;
+  lng: number;
+  radius: number;
+  arrivalTime: string;
+};
+
 export async function POST(req: Request) {
   try {
     const user = await getAuthUser();
@@ -38,10 +47,10 @@ export async function POST(req: Request) {
     }
 
     const normalizedEmployeeIds = [...new Set(employeeIds.map((id: unknown) => Number(id)).filter(Number.isInteger))];
-    const normalizedCheckpoints = checkpoints
+    const normalizedCheckpoints: NormalizedCheckpoint[] = checkpoints
       .map((checkpoint: RouteCheckpointInput, index: number) => ({
         sequenceOrder: index + 1,
-        address: checkpoint.address?.trim(),
+        address: checkpoint.address?.trim() || "",
         lat: Number(checkpoint.lat),
         lng: Number(checkpoint.lng),
         radius: Number(checkpoint.radius) || 150,
@@ -50,12 +59,12 @@ export async function POST(req: Request) {
           : "",
       }))
       .filter(
-        (checkpoint) =>
-          checkpoint.address &&
+        (checkpoint: NormalizedCheckpoint) =>
+          checkpoint.address.length > 0 &&
           Number.isFinite(checkpoint.lat) &&
           Number.isFinite(checkpoint.lng) &&
           (checkpoint.lat !== 0 || checkpoint.lng !== 0) &&
-          checkpoint.arrivalTime
+          checkpoint.arrivalTime.length > 0
       );
 
     if (normalizedCheckpoints.length === 0) {
