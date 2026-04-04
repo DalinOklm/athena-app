@@ -5,8 +5,10 @@ import { getAuthUser } from "@/lib/auth/server";
 export async function GET() {
   try {
     const user = await getAuthUser();
+    console.log("[/api/admin/employees] auth user:", user);
 
     if (!user?.companyId) {
+      console.warn("[/api/admin/employees] unauthorized request - missing user or companyId");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

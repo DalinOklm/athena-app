@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Search, MapPin, Clock, ChevronLeft, Save, RotateCcw, Pencil, X, Check } from "lucide-react"
+import { Search, MapPin, Clock, ChevronLeft, Save, RotateCcw, Pencil, X, Check, ShieldAlert, LogIn, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -215,6 +215,7 @@ export function LocationControlCenter() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = React.useState<number[]>([])
   const [employees, setEmployees] = React.useState<any[]>([])
   const [loadingEmployees, setLoadingEmployees] = React.useState(true)
+  const [authRequired, setAuthRequired] = React.useState(false)
   const [editingEmployee, setEditingEmployee] = React.useState<number | null>(null)
   const [expandedEmployeeId, setExpandedEmployeeId] = React.useState<number | null>(null)
   const [editData, setEditData] = React.useState<Partial<Employee>>({})
@@ -363,6 +364,13 @@ export function LocationControlCenter() {
         credentials: "include",
       })
 
+      if (res.status === 401) {
+        setAuthRequired(true)
+        setEmployees([])
+        setLoadingEmployees(false)
+        return
+      }
+
       const data = await res.json()
 
       console.log("👥 FULL API RESPONSE:", data)
@@ -371,6 +379,7 @@ export function LocationControlCenter() {
 
       console.log("✅ FINAL MAPPED:", mapped)
 
+      setAuthRequired(false)
       setEmployees(mapped)
     } catch (err) {
       console.error("❌ Failed to fetch employees", err)
@@ -1219,10 +1228,62 @@ React.useEffect(() => {
                 </Select>
               </div>
               <div className="text-sm text-muted-foreground">
-                {filteredEmployees.length} employee{filteredEmployees.length !== 1 ? "s" : ""}
+                {loadingEmployees && !authRequired
+                  ? "Loading employees..."
+                  : `${filteredEmployees.length} employee${filteredEmployees.length !== 1 ? "s" : ""}`}
               </div>
             </div>
 
+            {authRequired && (
+              <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-background to-orange-50 p-8">
+                <div className="mx-auto max-w-xl text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                    <ShieldAlert className="h-7 w-7" />
+                  </div>
+                  <h3 className="text-xl font-semibold tracking-tight">Authentication Required</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    We couldn&apos;t load employee assignments because your session is not authenticated.
+                    Please sign in again so location and route data can load correctly.
+                  </p>
+                  <div className="mt-6 flex items-center justify-center gap-3">
+                    <Button
+                      onClick={() => {
+                        window.location.href = "/admin-login"
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      Sign In
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        fetchEmployees()
+                      }}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!authRequired && loadingEmployees && (
+              <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-background to-cyan-50 p-8">
+                <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                    <Loader2 className="h-7 w-7 animate-spin" />
+                  </div>
+                  <h3 className="text-xl font-semibold tracking-tight">Loading Employees</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    We&apos;re still loading employee assignments and route data for your company.
+                    This usually takes just a moment.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!authRequired && !loadingEmployees && (
+            <>
             {/* Table */}
             <div className="rounded-lg border">
               <div className="max-h-[500px] overflow-auto">
@@ -1468,6 +1529,8 @@ React.useEffect(() => {
                 </Button>
               )}
             </div>
+            </>
+            )}
           </CardContent>
         </Card>
       </main>

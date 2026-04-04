@@ -57,11 +57,13 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   // ✅ Next.js 16+ cookies() is async
   const cookieStore = await cookies();
   const token = cookieStore.get("auth_token")?.value;
+  console.log("[getAuthUser] auth_token exists:", !!token);
 
   if (!token) return null;
 
   try {
     const { payload } = await jwtVerify(token, secret);
+    console.log("[getAuthUser] decoded auth payload:", payload);
 
     return {
       userId: payload.userId as number,
@@ -72,7 +74,8 @@ export async function getAuthUser(): Promise<AuthUser | null> {
       companyId: (payload.companyId ?? null) as number | null,
       companySlug: (payload.companySlug ?? null) as string | null,
     };
-  } catch {
+  } catch (error) {
+    console.error("[getAuthUser] jwtVerify failed:", error);
     return null;
   }
 }
