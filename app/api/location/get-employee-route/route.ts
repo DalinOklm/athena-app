@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import sql from "mssql";
 import { getDb } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth/server";
 
@@ -22,8 +21,8 @@ export async function GET(req: Request) {
 
     const routeResult = await db
       .request()
-      .input("companyId", sql.Int, user.companyId)
-      .input("employeeId", sql.Int, employeeId)
+      .input("companyId", Number(user.companyId))
+      .input("employeeId", employeeId)
       .query(`
         SELECT TOP 1
           er.id AS route_id
@@ -42,7 +41,7 @@ export async function GET(req: Request) {
 
     const checkpointResult = await db
       .request()
-      .input("routeId", sql.Int, routeId)
+      .input("routeId", Number(routeId))
       .query(`
         SELECT
           rc.id,

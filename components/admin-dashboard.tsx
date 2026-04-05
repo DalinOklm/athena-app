@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Fragment, useState, useEffect } from "react"
 import {
   Users,
   Clock,
@@ -53,9 +53,34 @@ import { logout } from "@/lib/auth/client";
 import { BulkEmployeeUploadDialog } from "@/components/admin/bulk-employee-upload-dialog";
 import { GlobalBanner } from "@/components/ui/global-banner";
 import LocationSchedulingEngine from "@/components/LocationSchedulingEngine";
+import { RouteAssignmentCard } from "@/components/RouteAssignmentCard";
+type EmployeeRouteCheckpoint = {
+  id: number
+  sequenceOrder: number
+  address: string
+  lat: number
+  lng: number
+  radius: number
+  arrivalTime: string
+}
 
-
-
+type DashboardEmployee = {
+  id: number
+  name: string
+  email: string
+  avatar: string | null
+  department: string
+  location: string
+  locationId: string
+  checkInTime: string
+  checkOutTime: string
+  totalHours: string
+  status: string
+  assignmentType: "default" | "custom" | "route"
+  routeId: number | null
+  locationRadius: number
+  routeCheckpoints: EmployeeRouteCheckpoint[]
+}
 
 const mockLocations = [
   {
@@ -172,9 +197,10 @@ export function AdminDashboard() {
   const [dropTargetLocation, setDropTargetLocation] = useState<string | null>(null)
   const router = useRouter();
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
-  const [employees, setEmployees] = useState<any[]>([])
+  const [employees, setEmployees] = useState<DashboardEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null)
+  const [expandedEmployeeId, setExpandedEmployeeId] = useState<number | null>(null)
 const [startDatetime, setStartDatetime] = useState("")
 const [endDatetime, setEndDatetime] = useState("")
 const [expectedMinutes, setExpectedMinutes] = useState(60)
@@ -190,7 +216,29 @@ const [expectedMinutes, setExpectedMinutes] = useState(60)
   slug: string;
 } | null>(null);
 
-const [schedules, setSchedules] = useState([])
+  const [schedules, setSchedules] = useState([])
+
+  const formatTimeValue = (time: unknown) => {
+    if (!time) return "-"
+
+    if (typeof time === "string" && time.includes("T")) {
+      return time.split("T")[1].split(".")[0].slice(0, 5)
+    }
+
+    if (typeof time === "string") {
+      return time.slice(0, 5)
+    }
+
+    try {
+      const date = new Date(time as string)
+      return `${date.getHours().toString().padStart(2, "0")}:${date
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}`
+    } catch {
+      return "-"
+    }
+  }
 
 useEffect(() => {
   const fetchSchedules = async () => {
@@ -293,23 +341,49 @@ useEffect(() => {
 
     
 
-      const normalized = data.map((emp: any, index: number) => {
-       
+      const normalized: DashboardEmployee[] = data.map((emp: any) => {
+        const fullName = `${emp.first_name || ""} ${emp.last_name || ""}`.trim() || emp.email
+        const parsedRouteCheckpoints = emp.route_checkpoints_json
+          ? JSON.parse(emp.route_checkpoints_json)
+          : []
 
-        const fullName = `${emp.first_name} ${emp.last_name}`
+        const routeCheckpoints: EmployeeRouteCheckpoint[] = Array.isArray(parsedRouteCheckpoints)
+          ? parsedRouteCheckpoints.map((checkpoint: any) => ({
+              id: checkpoint.id ?? checkpoint.sequence_order,
+              sequenceOrder: Number(checkpoint.sequence_order) || 0,
+              address: checkpoint.address || "",
+              lat: Number(checkpoint.latitude) || 0,
+              lng: Number(checkpoint.longitude) || 0,
+              radius: Number(checkpoint.radius) || 150,
+              arrivalTime: formatTimeValue(checkpoint.arrival_time),
+            }))
+          : []
+
+        const assignmentType: DashboardEmployee["assignmentType"] = emp.route_id
+          ? "route"
+          : emp.location_id
+          ? "custom"
+          : "default"
 
         return {
           id: emp.id,
           name: fullName,
           email: emp.email,
           avatar: null,
-          department: emp.department,
-          location: "Headquarters", // temporary
-          locationId: "hq",
-          checkInTime: "-",
-          checkOutTime: "-",
+          department: emp.department || "-",
+          location:
+            assignmentType === "route"
+              ? `${routeCheckpoints.length} checkpoint route`
+              : emp.address || "No location assigned",
+          locationId: String(emp.location_id ?? emp.route_id ?? "unassigned"),
+          checkInTime: formatTimeValue(emp.check_in_time),
+          checkOutTime: formatTimeValue(emp.check_out_time),
           totalHours: "-",
           status: "inactive",
+          assignmentType,
+          routeId: emp.route_id ?? null,
+          locationRadius: Number(emp.radius) || 150,
+          routeCheckpoints,
         }
       })
 
@@ -391,7 +465,10 @@ const handleDeleteSchedule = async (id: number) => {
       employee.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
       employee.department.toLowerCase().includes(searchQuery.toLowerCase())
 
-    const matchesLocation = employeeLocationFilter === "all" || employee.locationId === employeeLocationFilter
+    const matchesLocation =
+      employeeLocationFilter === "all" ||
+      employee.locationId === employeeLocationFilter ||
+      (employee.assignmentType === "route" && employeeLocationFilter === "route")
 
     return matchesSearch && matchesLocation
   })
@@ -591,6 +668,7 @@ const getEmployeesAssignedToLocation = (locationName: string) => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All locations</SelectItem>
+                    <SelectItem value="route">Route assignments</SelectItem>
                     {mockLocations
                       .filter((loc) => loc.active)
                       .map((location) => (
@@ -636,139 +714,191 @@ const getEmployeesAssignedToLocation = (locationName: string) => {
     </TableRow>
   ) : (
     filteredEmployees.map((employee) => (
-      <TableRow
-        key={employee.id}
-        className="border-border/40 transition-colors hover:bg-muted/40"
-      >
-        <TableCell className="px-8 py-4">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-11 w-11 rounded-xl border border-border/60">
-              <AvatarImage
-                src={employee.avatar || "/placeholder.svg"}
-                alt={employee.name || "Employee"}
-              />
-              <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-medium text-primary">
-                {employee.name
-                  ? employee.name
-                      .split(" ")
-                      .map((n: string) => n[0])
-                      .join("")
-                  : "?"}
-              </AvatarFallback>
-            </Avatar>
+      <Fragment key={employee.id}>
+        <TableRow
+          className="border-border/40 cursor-pointer transition-colors hover:bg-muted/40"
+          onClick={() =>
+            setExpandedEmployeeId((current) => (current === employee.id ? null : employee.id))
+          }
+        >
+          <TableCell className="px-8 py-4">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-11 w-11 rounded-xl border border-border/60">
+                <AvatarImage
+                  src={employee.avatar || "/placeholder.svg"}
+                  alt={employee.name || "Employee"}
+                />
+                <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-medium text-primary">
+                  {employee.name
+                    ? employee.name
+                        .split(" ")
+                        .map((n: string) => n[0])
+                        .join("")
+                    : "?"}
+                </AvatarFallback>
+              </Avatar>
 
-            <div>
-              <p className="font-medium leading-none text-foreground">
-                {employee.name || "Unknown"}
-              </p>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                {employee.email || "-"}
-              </p>
-            </div>
-          </div>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <span className="text-sm text-foreground">
-            {employee.department || "-"}
-          </span>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-foreground">
-              {employee.location || "Headquarters"}
-            </span>
-          </div>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <span className="text-sm font-medium text-foreground">
-            {employee.checkInTime || "-"}
-          </span>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <span className="text-sm text-muted-foreground">
-            {employee.checkOutTime || "-"}
-          </span>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <span className="text-sm font-medium text-foreground">
-            {employee.totalHours || "-"}
-          </span>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <Badge className={getStatusColor(employee.status || "inactive")}>
-            {employee.status || "inactive"}
-          </Badge>
-        </TableCell>
-
-        <TableCell className="py-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 hover:bg-muted"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem>
-                <Eye className="mr-2 h-4 w-4" />
-                View Details
-              </DropdownMenuItem>
-
-              <DropdownMenuItem>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Employee
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              <div className="px-2 py-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Assign Location
-                </Label>
-
-                <Select
-                  defaultValue={employee.locationId || "hq"}
-                  onValueChange={(value) =>
-                    handleAssignLocation(employee.id, value)
-                  }
-                >
-                  <SelectTrigger className="mt-1.5 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    {mockLocations
-                      .filter((loc) => loc.active)
-                      .map((location) => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+              <div>
+                <p className="font-medium leading-none text-foreground">
+                  {employee.name || "Unknown"}
+                </p>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {employee.email || "-"}
+                </p>
               </div>
+            </div>
+          </TableCell>
 
-              <DropdownMenuSeparator />
+          <TableCell className="py-4">
+            <span className="text-sm text-foreground">
+              {employee.department || "-"}
+            </span>
+          </TableCell>
 
-              <DropdownMenuItem className="text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Remove
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </TableCell>
-      </TableRow>
+          <TableCell className="py-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-foreground">
+                {employee.location || "No location assigned"}
+              </span>
+            </div>
+          </TableCell>
+
+          <TableCell className="py-4">
+            <span className="text-sm font-medium text-foreground">
+              {employee.checkInTime || "-"}
+            </span>
+          </TableCell>
+
+          <TableCell className="py-4">
+            <span className="text-sm text-muted-foreground">
+              {employee.checkOutTime || "-"}
+            </span>
+          </TableCell>
+
+          <TableCell className="py-4">
+            <span className="text-sm font-medium text-foreground">
+              {employee.totalHours || "-"}
+            </span>
+          </TableCell>
+
+          <TableCell className="py-4">
+            <Badge className={getStatusColor(employee.status || "inactive")}>
+              {employee.status || "inactive"}
+            </Badge>
+          </TableCell>
+
+          <TableCell className="py-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 hover:bg-muted"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View Details
+                </DropdownMenuItem>
+
+                <DropdownMenuItem>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Employee
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <div className="px-2 py-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Assign Location
+                  </Label>
+
+                  <Select
+                    defaultValue={employee.locationId || "hq"}
+                    onValueChange={(value) =>
+                      handleAssignLocation(employee.id, value)
+                    }
+                  >
+                    <SelectTrigger className="mt-1.5 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {mockLocations
+                        .filter((loc) => loc.active)
+                        .map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TableCell>
+        </TableRow>
+        {expandedEmployeeId === employee.id && (
+          <TableRow className="bg-muted/30">
+            <TableCell colSpan={8} className="px-8 py-5">
+              {employee.assignmentType === "route" ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Assigned Route</p>
+                    <p className="text-xs text-muted-foreground">
+                      Expected check-in follows the route checkpoint times below.
+                    </p>
+                  </div>
+                  <RouteAssignmentCard
+                    route={{
+                      checkpoints: employee.routeCheckpoints.map((checkpoint) => ({
+                        address: checkpoint.address,
+                        arrivalTime: checkpoint.arrivalTime,
+                      })),
+                    }}
+                    className="border bg-background"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-xl border bg-background p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">Assigned Location</p>
+                      <p className="text-sm text-muted-foreground">{employee.location}</p>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      Radius {employee.locationRadius}m
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex gap-6 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Expected check-in:</span>{" "}
+                      <span className="font-medium text-foreground">{employee.checkInTime}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Expected check-out:</span>{" "}
+                      <span className="font-medium text-foreground">{employee.checkOutTime}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </TableCell>
+          </TableRow>
+        )}
+      </Fragment>
     ))
   )}
 </TableBody>

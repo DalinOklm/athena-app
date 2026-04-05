@@ -23,6 +23,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { logout } from "@/lib/auth/client";
+import MapLocationSelector from "@/components/MapLocationSelector";
+import { RouteAssignmentCard } from "@/components/RouteAssignmentCard";
 
 
 type CheckInStatus = "not-checked-in" | "checked-in" | "completed";
@@ -35,6 +37,29 @@ type Employee = {
   phone?: string;
   joinDate?: string;
   companySlug: string; // ✅ ADD THIS
+};
+
+type AssignmentCheckpoint = {
+  id: number;
+  sequenceOrder: number;
+  address: string;
+  lat: number;
+  lng: number;
+  radius: number;
+  arrivalTime: string;
+};
+
+type EmployeeAssignment = {
+  assignmentType: "default" | "custom" | "route";
+  locationName: string;
+  address: string;
+  lat: number;
+  lng: number;
+  radius: number;
+  expectedCheckIn: string;
+  expectedCheckOut: string;
+  expectedPeriodHours: string;
+  routeCheckpoints: AssignmentCheckpoint[];
 };
 
 export function EmployeeDashboard() {
@@ -59,6 +84,8 @@ export function EmployeeDashboard() {
       const [activeAttendance, setActiveAttendance] = useState<any | null>(null);
       const [activeAttendanceId, setActiveAttendanceId] = useState<number | null>(null);
       const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null);
+      const [assignment, setAssignment] = useState<EmployeeAssignment | null>(null);
+      const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null);
       const formatElapsed = (seconds: number) => {
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
@@ -77,6 +104,65 @@ const parseDbLocalDateTime = (value: string) => {
   const d = new Date(normalized);
 
   return d;
+};
+
+const formatTimeValue = (value: unknown) => {
+  if (!value) return "-";
+
+  if (typeof value === "string" && value.includes("T")) {
+    return value.split("T")[1].split(".")[0].slice(0, 5);
+  }
+
+  if (typeof value === "string") {
+    return value.slice(0, 5);
+  }
+
+  try {
+    const date = new Date(value as string);
+    return `${date.getHours().toString().padStart(2, "0")}:${date
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+  } catch {
+    return "-";
+  }
+};
+
+const getExpectedPeriodHours = (start: string, end: string) => {
+  if (!start || !end || start === "-" || end === "-") return "-";
+
+  const [startHours, startMinutes] = start.split(":").map(Number);
+  const [endHours, endMinutes] = end.split(":").map(Number);
+
+  if ([startHours, startMinutes, endHours, endMinutes].some(Number.isNaN)) {
+    return "-";
+  }
+
+  const startTotal = startHours * 60 + startMinutes;
+  const endTotal = endHours * 60 + endMinutes;
+  const diffMinutes = endTotal - startTotal;
+
+  if (diffMinutes <= 0) return "-";
+
+  return (diffMinutes / 60).toFixed(2);
+};
+
+const calculateDistanceKm = (
+  first: { lat: number; lng: number },
+  second: { lat: number; lng: number }
+) => {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(second.lat - first.lat);
+  const dLng = toRad(second.lng - first.lng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(first.lat)) *
+      Math.cos(toRad(second.lat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 
@@ -112,6 +198,54 @@ useEffect(() => {
         joinDate: data.joinDate,
         companySlug: data.companySlug,
       });
+
+      const assignmentRes = await fetch("/api/employee/assignment", {
+        credentials: "include",
+      });
+
+      if (assignmentRes.ok) {
+        const assignmentData = await assignmentRes.json();
+        const parsedRouteCheckpoints = assignmentData.route_checkpoints_json
+          ? JSON.parse(assignmentData.route_checkpoints_json)
+          : [];
+
+        const routeCheckpoints: AssignmentCheckpoint[] = Array.isArray(parsedRouteCheckpoints)
+          ? parsedRouteCheckpoints.map((checkpoint: any) => ({
+              id: checkpoint.id ?? checkpoint.sequence_order,
+              sequenceOrder: Number(checkpoint.sequence_order) || 0,
+              address: checkpoint.address || "",
+              lat: Number(checkpoint.latitude) || 0,
+              lng: Number(checkpoint.longitude) || 0,
+              radius: Number(checkpoint.radius) || 150,
+              arrivalTime: formatTimeValue(checkpoint.arrival_time),
+            }))
+          : [];
+
+        const expectedCheckIn =
+          routeCheckpoints[0]?.arrivalTime || formatTimeValue(assignmentData.check_in_time);
+        const expectedCheckOut =
+          routeCheckpoints[routeCheckpoints.length - 1]?.arrivalTime ||
+          formatTimeValue(assignmentData.check_out_time);
+
+        setAssignment({
+          assignmentType: assignmentData.route_id
+            ? "route"
+            : assignmentData.location_id
+            ? "custom"
+            : "default",
+          locationName: assignmentData.route_id
+            ? "Assigned Route"
+            : assignmentData.location_name || "Company Office",
+          address: assignmentData.address || "No address assigned",
+          lat: Number(assignmentData.latitude) || 0,
+          lng: Number(assignmentData.longitude) || 0,
+          radius: Number(assignmentData.radius) || 150,
+          expectedCheckIn,
+          expectedCheckOut,
+          expectedPeriodHours: getExpectedPeriodHours(expectedCheckIn, expectedCheckOut),
+          routeCheckpoints,
+        });
+      }
 
       // ✅ LOAD ATTENDANCE AFTER AUTH
       const attendance = await loadAttendance();
@@ -331,6 +465,22 @@ useEffect(() => {
 
 
 
+useEffect(() => {
+  if (typeof window === "undefined" || !navigator.geolocation) return;
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      setCurrentPosition({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+    },
+    (error) => {
+      console.error("❌ Failed to get current location", error);
+    }
+  );
+}, []);
+
   const handleLogout = async () => {
     console.log("🔵 LOGOUT CLICKED", {
       companySlug: employee?.companySlug,
@@ -352,12 +502,40 @@ useEffect(() => {
   /* =====================================================
    * 📍 MOCK LOCATION (COMPANY-SCOPED LATER)
    * ===================================================== */
+  const activeCheckpoint = assignment?.routeCheckpoints?.[0] ?? null;
+  const locationTarget = activeCheckpoint
+    ? {
+        name: "Assigned Route Checkpoint",
+        address: activeCheckpoint.address,
+        lat: activeCheckpoint.lat,
+        lng: activeCheckpoint.lng,
+        allowedRadius: activeCheckpoint.radius,
+      }
+    : {
+        name: assignment?.locationName || "Company Office",
+        address: assignment?.address || "No address assigned",
+        lat: assignment?.lat || 0,
+        lng: assignment?.lng || 0,
+        allowedRadius: assignment?.radius || 150,
+      };
+
+  const currentDistance =
+    currentPosition && locationTarget.lat && locationTarget.lng
+      ? calculateDistanceKm(currentPosition, {
+          lat: locationTarget.lat,
+          lng: locationTarget.lng,
+        })
+      : null;
+
   const location = {
-    name: "Company Office",
-    address: "Company Address",
-    allowedRadius: 500,
-    currentDistance: 0.8,
-    isWithinRange: true,
+    name: locationTarget.name,
+    address: locationTarget.address,
+    allowedRadius: locationTarget.allowedRadius,
+    currentDistance: currentDistance ?? 0,
+    isWithinRange:
+      currentDistance !== null
+        ? currentDistance * 1000 <= locationTarget.allowedRadius
+        : false,
   };
 
 
@@ -496,6 +674,15 @@ useEffect(() => {
                       Date
                     </th>
                     <th className="border-r border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Expected Check-in
+                    </th>
+                    <th className="border-r border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Expected Check-out
+                    </th>
+                    <th className="border-r border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Expected Period
+                    </th>
+                    <th className="border-r border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700">
                       Check-in Time
                     </th>
                     <th className="border-r border-gray-200 px-4 py-3 text-left text-sm font-semibold text-gray-700">
@@ -510,6 +697,9 @@ useEffect(() => {
                           return (
                             <tr key={record.id}>
                               <td className="border-r px-4 py-3 text-sm">{record.date}</td>
+                              <td className="border-r px-4 py-3 text-sm">{assignment?.expectedCheckIn || "-"}</td>
+                              <td className="border-r px-4 py-3 text-sm">{assignment?.expectedCheckOut || "-"}</td>
+                              <td className="border-r px-4 py-3 text-sm">{assignment?.expectedPeriodHours || "-"}</td>
                               <td className="border-r px-4 py-3 text-sm">{record.checkIn}</td>
                               <td className="border-r px-4 py-3 text-sm">
                                 {record.checkOut !== "—" ? record.checkOut : "Not checked out"}
@@ -532,11 +722,28 @@ useEffect(() => {
 
 
                 {attendanceHistory.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-500">
-                      No attendance records yet
-                    </td>
-                  </tr>
+                  <>
+                    <tr>
+                      <td className="border-r px-4 py-3 text-sm text-gray-500">Today</td>
+                      <td className="border-r px-4 py-3 text-sm font-medium text-gray-900">
+                        {assignment?.expectedCheckIn || "-"}
+                      </td>
+                      <td className="border-r px-4 py-3 text-sm font-medium text-gray-900">
+                        {assignment?.expectedCheckOut || "-"}
+                      </td>
+                      <td className="border-r px-4 py-3 text-sm font-medium text-gray-900">
+                        {assignment?.expectedPeriodHours || "-"}
+                      </td>
+                      <td className="border-r px-4 py-3 text-sm text-gray-500">-</td>
+                      <td className="border-r px-4 py-3 text-sm text-gray-500">-</td>
+                      <td className="px-4 py-3 text-right text-sm text-gray-500">-</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={7} className="px-4 py-4 text-center text-sm text-gray-500">
+                        No attendance records yet
+                      </td>
+                    </tr>
+                  </>
                 )}
               </tbody>
 
@@ -544,6 +751,24 @@ useEffect(() => {
             </div>
           </div>
         </div>
+
+        {assignment?.assignmentType === "route" && (
+          <div className="mb-8 rounded-md border bg-white p-6">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Assigned Route</h2>
+            <p className="mb-4 text-sm text-gray-600">
+              This route was configured by your admin and is read-only here.
+            </p>
+            <RouteAssignmentCard
+              route={{
+                checkpoints: assignment.routeCheckpoints.map((checkpoint) => ({
+                  address: checkpoint.address,
+                  arrivalTime: checkpoint.arrivalTime,
+                })),
+              }}
+              className="border bg-white"
+            />
+          </div>
+        )}
 
         <div className="rounded-md border bg-white p-6">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Location Verification</h2>
@@ -564,72 +789,58 @@ useEffect(() => {
             <div className="flex justify-between">
               <span className="text-gray-600">Current Distance:</span>
               <span className={`font-medium ${location.isWithinRange ? "text-green-600" : "text-red-600"}`}>
-                {location.currentDistance.toFixed(2)} km
+                {currentDistance !== null ? `${location.currentDistance.toFixed(2)} km` : "Awaiting location"}
               </span>
             </div>
           </div>
 
           <div className="relative overflow-hidden rounded-md border">
-            <div className="h-80 w-full bg-gray-100">
-              {/* Map background - using simple Google Maps style colors */}
-              <svg width="100%" height="100%" viewBox="0 0 800 320" className="h-full w-full">
-                {/* Background */}
-                <rect width="800" height="320" fill="#f0f0f0" />
-
-                {/* Streets */}
-                <line x1="0" y1="120" x2="800" y2="120" stroke="#ffffff" strokeWidth="4" />
-                <line x1="0" y1="200" x2="800" y2="200" stroke="#ffffff" strokeWidth="4" />
-                <line x1="300" y1="0" x2="300" y2="320" stroke="#ffffff" strokeWidth="4" />
-                <line x1="500" y1="0" x2="500" y2="320" stroke="#ffffff" strokeWidth="4" />
-
-                {/* Buildings */}
-                <rect x="50" y="50" width="200" height="60" fill="#d4d4d4" opacity="0.7" />
-                <rect x="550" y="140" width="180" height="50" fill="#d4d4d4" opacity="0.7" />
-                <rect x="100" y="230" width="150" height="70" fill="#d4d4d4" opacity="0.7" />
-                <rect x="550" y="220" width="200" height="80" fill="#d4d4d4" opacity="0.7" />
-
-                {/* Office location circle (radius indicator) */}
-                <circle
-                  cx="400"
-                  cy="160"
-                  r="60"
-                  fill="#3b82f6"
-                  opacity="0.1"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  strokeDasharray="4,4"
-                />
-
-                {/* Distance line */}
-                <line x1="400" y1="160" x2="450" y2="140" stroke="#6b7280" strokeWidth="2" strokeDasharray="5,5" />
-
-                {/* Office pin (red) */}
-                <g transform="translate(400, 160)">
-                  <circle cx="0" cy="-15" r="12" fill="#dc2626" stroke="#fff" strokeWidth="2" />
-                  <path d="M 0,-25 L -8,-5 L 8,-5 Z" fill="#dc2626" />
-                </g>
-
-                {/* User location pin (blue) */}
-                <g transform="translate(450, 140)">
-                  <circle cx="0" cy="-15" r="12" fill="#2563eb" stroke="#fff" strokeWidth="2" />
-                  <path d="M 0,-25 L -8,-5 L 8,-5 Z" fill="#2563eb" />
-                </g>
-              </svg>
+            <div className="pointer-events-none">
+              <MapLocationSelector
+                location={
+                  assignment?.assignmentType === "route"
+                    ? null
+                    : assignment && assignment.lat && assignment.lng
+                    ? {
+                        address: assignment.address,
+                        lat: assignment.lat,
+                        lng: assignment.lng,
+                      }
+                    : null
+                }
+                radius={assignment?.radius || 150}
+                checkpoints={
+                  assignment?.assignmentType === "route"
+                    ? assignment.routeCheckpoints.map((checkpoint) => ({
+                        id: checkpoint.id,
+                        address: checkpoint.address,
+                        lat: checkpoint.lat,
+                        lng: checkpoint.lng,
+                        radius: checkpoint.radius,
+                      }))
+                    : []
+                }
+                onLocationSelect={() => {}}
+                onMapClickSelect={() => {}}
+              />
             </div>
 
-            {/* Legend */}
             <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between rounded bg-white/95 px-3 py-2 text-xs shadow-sm">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
                   <MapPin className="h-4 w-4 text-red-600" />
-                  <span className="text-gray-700">Office Location</span>
+                  <span className="text-gray-700">
+                    {assignment?.assignmentType === "route" ? "Assigned Route" : "Office Location"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Navigation className="h-4 w-4 text-blue-600" />
                   <span className="text-gray-700">Your Location</span>
                 </div>
               </div>
-              <div className="font-medium text-gray-900">Distance: {location.currentDistance.toFixed(2)} km</div>
+              <div className="font-medium text-gray-900">
+                Distance: {currentDistance !== null ? `${location.currentDistance.toFixed(2)} km` : "Awaiting location"}
+              </div>
             </div>
           </div>
         </div>

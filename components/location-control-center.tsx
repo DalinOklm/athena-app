@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { Search, MapPin, Clock, ChevronLeft, Save, RotateCcw, Pencil, X, Check, ShieldAlert, LogIn, Loader2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -193,6 +194,241 @@ function getInitials(name: string) {
     .toUpperCase()
 }
 
+function RouteCheckpointSortableItem({
+  cp,
+  index,
+  total,
+  selected,
+  onSelect,
+  onUpdate,
+  onRemove,
+}: {
+  cp: Checkpoint
+  index: number
+  total: number
+  selected: boolean
+  onSelect: () => void
+  onUpdate: (updates: Partial<Checkpoint>) => void
+  onRemove: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } =
+    useSortable({ id: cp.id })
+  const [suggestions, setSuggestions] = React.useState<any[]>([])
+  const [loadingSuggestions, setLoadingSuggestions] = React.useState(false)
+  const [isTypingAddress, setIsTypingAddress] = React.useState(false)
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const color =
+    index === 0 ? "bg-emerald-500" : index === total - 1 ? "bg-red-500" : "bg-blue-500"
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+
+      if (!containerRef.current?.contains(target)) {
+        setSuggestions([])
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    const query = cp.address?.trim()
+
+    if (!isTypingAddress || !query) {
+      setSuggestions([])
+      setLoadingSuggestions(false)
+      return
+    }
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        setLoadingSuggestions(true)
+
+        const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!,
+          },
+          body: JSON.stringify({ input: query }),
+        })
+
+        const data = await res.json()
+        setSuggestions(data.suggestions || [])
+      } catch (error) {
+        console.error("❌ checkpoint autocomplete error", error)
+        setSuggestions([])
+      } finally {
+        setLoadingSuggestions(false)
+      }
+    }, 300)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [cp.address, isTypingAddress])
+
+  const handleSuggestionSelect = async (placeId: string) => {
+    try {
+      const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+        headers: {
+          "X-Goog-Api-Key": process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!,
+          "X-Goog-FieldMask": "id,displayName,formattedAddress,location",
+        },
+      })
+
+      const data = await res.json()
+
+      if (!data.location) {
+        return
+      }
+
+      onUpdate({
+        address: data.formattedAddress || cp.address,
+        lat: data.location.latitude,
+        lng: data.location.longitude,
+      })
+
+      setIsTypingAddress(false)
+      setSuggestions([])
+    } catch (error) {
+      console.error("❌ checkpoint place details error", error)
+    }
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`cursor-pointer rounded-xl border p-4 space-y-3 ${
+        selected ? "border-blue-500 bg-blue-50" : ""
+      }`}
+      onClick={onSelect}
+    >
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          className="cursor-grab touch-none text-gray-400"
+          {...attributes}
+          {...listeners}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+
+        <div className={`w-7 h-7 flex items-center justify-center rounded-full text-white text-sm ${color}`}>
+          {index + 1}
+        </div>
+
+        <div className="font-medium">Location {index + 1}</div>
+      </div>
+
+      <div ref={containerRef} className="relative" onClick={(e) => e.stopPropagation()}>
+        <Input
+          placeholder="Search address..."
+          value={cp.address}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={() => {
+            setSuggestions([])
+          }}
+          onChange={(e) => {
+            const address = e.target.value
+
+            console.log("[LocationControlCenter] checkpoint input change", {
+              id: cp.id,
+              address,
+            })
+
+            setIsTypingAddress(true)
+            onUpdate({ address })
+          }}
+        />
+
+        {loadingSuggestions && isTypingAddress && cp.address.trim().length > 0 && (
+          <div className="absolute right-3 top-3 text-xs text-muted-foreground">
+            Loading...
+          </div>
+        )}
+
+        {isTypingAddress && suggestions.length > 0 && (
+          <div className="absolute z-50 mt-2 w-full overflow-y-auto rounded-xl border bg-white shadow-lg max-h-60">
+            {suggestions.map((item: any) => (
+              <button
+                key={item.placePrediction.placeId}
+                type="button"
+                className="block w-full border-b p-3 text-left text-sm transition last:border-none hover:bg-blue-50"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void handleSuggestionSelect(item.placePrediction.placeId)
+                }}
+              >
+                {item.placePrediction.text.text}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-4 items-center">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">Arrival Time</label>
+          <Input
+            type="time"
+            value={cp.arrivalTime}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              console.log("⏰ TIME CHANGE:", cp.id, e.target.value)
+              onUpdate({ arrivalTime: e.target.value })
+            }}
+            className="w-32"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1 w-full">
+          <label className="text-xs text-muted-foreground">Radius ({cp.radius || 150}m)</label>
+          <input
+            type="range"
+            min={50}
+            max={500}
+            step={10}
+            value={cp.radius || 150}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              const value = Number(e.target.value)
+              console.log("📏 RADIUS CHANGE:", cp.id, value)
+              onUpdate({ radius: value })
+            }}
+            className="w-full"
+          />
+        </div>
+
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={(e) => {
+            e.stopPropagation()
+            console.log("❌ REMOVE CHECKPOINT:", cp.id)
+            onRemove()
+          }}
+        >
+          Remove
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 type Checkpoint = {
   id: number
   address: string
@@ -203,6 +439,7 @@ type Checkpoint = {
 }
 
 export function LocationControlCenter() {
+  const router = useRouter()
   const [selectedAddress, setSelectedAddress] = React.useState("")
   const [selectedLat, setSelectedLat] = React.useState(0)
   const [selectedLng, setSelectedLng] = React.useState(0)
@@ -229,6 +466,7 @@ export function LocationControlCenter() {
   const [activeRouteId, setActiveRouteId] = React.useState<number | null>(null)
   const [applyMode, setApplyMode] = React.useState<ApplyMode>("single")
   const [extraUserIds, setExtraUserIds] = React.useState<number[]>([])
+  const [dashboardHref, setDashboardHref] = React.useState("/admin-dashboard")
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle")
   // 🔥 MULTI LOCATION STATE
  const [checkpoints, setCheckpoints] = React.useState<Checkpoint[]>([
@@ -413,10 +651,20 @@ export function LocationControlCenter() {
 const handleDragEnd = (event: any) => {
   const { active, over } = event
 
-  if (active.id !== over?.id) {
+  if (!over) {
+    return
+  }
+
+  if (active.id !== over.id) {
     setCheckpoints((items) => {
       const oldIndex = items.findIndex((i) => i.id === active.id)
       const newIndex = items.findIndex((i) => i.id === over.id)
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return items
+      }
+
+      console.log("↕️ Reordered checkpoints:", { oldIndex, newIndex })
 
       return arrayMove(items, oldIndex, newIndex)
     })
@@ -771,8 +1019,63 @@ React.useEffect(() => {
 }, [checkpoints])
 
 React.useEffect(() => {
+  if (status === "idle") {
+    return
+  }
+
+  const timeout = window.setTimeout(() => {
+    setStatus("idle")
+    setMessage("")
+  }, 4000)
+
+  return () => {
+    window.clearTimeout(timeout)
+  }
+}, [status])
+
+React.useEffect(() => {
   fetchEmployees()
 }, [fetchEmployees])
+
+React.useEffect(() => {
+  const resolveDashboardHref = async () => {
+    try {
+      const res = await fetch("/api/me", {
+        credentials: "include",
+      })
+
+      if (!res.ok) {
+        return
+      }
+
+      const data = await res.json()
+      const role = data.role || data.roleCode
+      const companySlug = data.companySlug
+
+      if (role === "super_admin") {
+        setDashboardHref("/super-admin-dashboard")
+        return
+      }
+
+      if (role === "employee") {
+        setDashboardHref(
+          companySlug ? `/${companySlug}/employee/dashboard` : "/employee-dashboard"
+        )
+        return
+      }
+
+      if (role === "admin") {
+        setDashboardHref(
+          companySlug ? `/${companySlug}/admin/dashboard` : "/admin-dashboard"
+        )
+      }
+    } catch (error) {
+      console.error("❌ Failed to resolve dashboard route", error)
+    }
+  }
+
+  resolveDashboardHref()
+}, [])
 
 
 
@@ -780,13 +1083,25 @@ React.useEffect(() => {
     <div className="min-h-screen bg-muted/40">
        {status !== "idle" && (
         <div
-          className={`mb-4 p-3 rounded-lg text-sm ${
+          className={`fixed left-1/2 top-4 z-50 w-[min(92vw,520px)] -translate-x-1/2 rounded-xl border px-4 py-3 pr-10 text-sm shadow-lg backdrop-blur ${
             status === "success"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
+              ? "border-green-200 bg-green-100/95 text-green-700"
+              : "border-red-200 bg-red-100/95 text-red-700"
           }`}
+          role="status"
+          aria-live="polite"
         >
           {message}
+          <button
+            type="button"
+            className="absolute right-3 top-3 text-current/70 transition hover:text-current"
+            onClick={() => {
+              setStatus("idle")
+              setMessage("")
+            }}
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
       {/* Header */}
@@ -799,7 +1114,13 @@ React.useEffect(() => {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                router.push(dashboardHref)
+              }}
+            >
               <ChevronLeft className="mr-1.5 h-4 w-4" />
               Back
             </Button>
@@ -1037,16 +1358,7 @@ React.useEffect(() => {
             >
               <div className="space-y-3">
                 {checkpoints.map((cp, index) => {
-                  const isStart = index === 0
-                  const isEnd = index === checkpoints.length - 1
-
-                  const color = isStart
-                    ? "bg-emerald-500"
-                    : isEnd
-                    ? "bg-red-500"
-                    : "bg-blue-500"
-
-                  console.log("📦 RENDER CHECKPOINT:", {
+                  console.log("RENDER CHECKPOINT:", {
                     id: cp.id,
                     index,
                     address: cp.address,
@@ -1054,119 +1366,19 @@ React.useEffect(() => {
                   })
 
                   return (
-                    <div
+                    <RouteCheckpointSortableItem
                       key={cp.id}
-                      className={`border rounded-xl p-4 space-y-3 cursor-pointer ${
-                        selectedCheckpointId === cp.id
-                          ? "border-blue-500 bg-blue-50"
-                          : ""
-                      }`}
-                      onClick={() => {
-                        console.log("🎯 SELECT CHECKPOINT:", cp.id)
+                      cp={cp}
+                      index={index}
+                      total={checkpoints.length}
+                      selected={selectedCheckpointId === cp.id}
+                      onSelect={() => {
+                        console.log("SELECT CHECKPOINT:", cp.id)
                         setSelectedCheckpointId(cp.id)
                       }}
-                    >
-                      {/* HEADER */}
-                      <div className="flex items-center gap-3">
-                        {/* Drag handle */}
-                        <div className="cursor-grab">⋮⋮</div>
-
-                        {/* Circle index */}
-                        <div
-                          className={`w-7 h-7 flex items-center justify-center rounded-full text-white text-sm ${color}`}
-                        >
-                          {index + 1}
-                        </div>
-
-                        <div className="font-medium">
-                          Location {index + 1}
-                        </div>
-                      </div>
-
-                      {/* ADDRESS */}
-                      <Input
-                        placeholder="Search address..."
-                        value={cp.address}
-                        onChange={async (e) => {
-                          const address = e.target.value
-
-                          console.log("[LocationControlCenter] checkpoint input change", {
-                            id: cp.id,
-                            address,
-                          })
-
-                          updateCheckpoint(cp.id, { address })
-
-                          const geocoded = await geocodeAddress(address)
-
-                          if (!geocoded) return
-
-                          updateCheckpoint(cp.id, {
-                            address: geocoded.address,
-                            lat: geocoded.lat,
-                            lng: geocoded.lng,
-                          })
-                        }}
-                      />
-
-                      {/* TIME + RADIUS */}
-                      <div className="flex gap-4 items-center">
-                        {/* TIME */}
-                        <div className="flex flex-col gap-1">
-                          <label className="text-xs text-muted-foreground">
-                            Arrival Time
-                          </label>
-
-                          <Input
-                            type="time"
-                            value={cp.arrivalTime}
-                            onChange={(e) => {
-                              console.log("⏰ TIME CHANGE:", cp.id, e.target.value)
-                              updateCheckpoint(cp.id, {
-                                arrivalTime: e.target.value,
-                              })
-                            }}
-                            className="w-32"
-                          />
-                        </div>
-
-                        {/* RADIUS */}
-                        <div className="flex flex-col gap-1 w-full">
-                          <label className="text-xs text-muted-foreground">
-                            Radius ({cp.radius || 150}m)
-                          </label>
-
-                          <input
-                            type="range"
-                            min={50}
-                            max={500}
-                            step={10}
-                            value={cp.radius || 150}
-                            onChange={(e) => {
-                              const value = Number(e.target.value)
-
-                              console.log("📏 RADIUS CHANGE:", cp.id, value)
-
-                              updateCheckpoint(cp.id, { radius: value })
-                            }}
-                            className="w-full"
-                          />
-                        </div>
-
-                        {/* REMOVE */}
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            console.log("❌ REMOVE CHECKPOINT:", cp.id)
-                            removeCheckpoint(cp.id)
-                          }}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
+                      onUpdate={(updates) => updateCheckpoint(cp.id, updates)}
+                      onRemove={() => removeCheckpoint(cp.id)}
+                    />
                   )
                 })}
               </div>
@@ -1676,5 +1888,6 @@ React.useEffect(() => {
     </div>
   )
 }
+
 
 

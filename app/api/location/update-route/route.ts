@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import sql from "mssql";
 import { getDb } from "@/lib/db";
 import { getAuthUser } from "@/lib/auth/server";
 
@@ -74,9 +73,9 @@ export async function POST(req: Request) {
 
     const routeResult = await db
       .request()
-      .input("companyId", sql.Int, user.companyId)
-      .input("routeId", sql.Int, routeId)
-      .input("employeeId", sql.Int, employeeId)
+      .input("companyId", Number(user.companyId))
+      .input("routeId", routeId)
+      .input("employeeId", employeeId)
       .query(`
         SELECT TOP 1
           er.id,
@@ -99,8 +98,8 @@ export async function POST(req: Request) {
     if (applyMode === "all") {
       const linkedEmployeesResult = await db
         .request()
-        .input("companyId", sql.Int, user.companyId)
-        .input("routeId", sql.Int, routeId)
+        .input("companyId", Number(user.companyId))
+        .input("routeId", routeId)
         .query(`
           SELECT er.employee_id
           FROM employee_routes er
@@ -109,7 +108,9 @@ export async function POST(req: Request) {
             AND er.is_active = 1
         `);
 
-      targetUserIds = linkedEmployeesResult.recordset.map((row: any) => row.employee_id);
+      targetUserIds = linkedEmployeesResult.recordset.map((row: { employee_id: number }) =>
+        Number(row.employee_id)
+      );
     }
 
     if (applyMode === "selected") {
@@ -125,7 +126,7 @@ export async function POST(req: Request) {
 
     await db
       .request()
-      .input("routeId", sql.Int, routeId)
+      .input("routeId", routeId)
       .query(`
         DELETE FROM route_checkpoints
         WHERE route_id = @routeId
@@ -134,13 +135,13 @@ export async function POST(req: Request) {
     for (const checkpoint of normalizedCheckpoints) {
       await db
         .request()
-        .input("routeId", sql.Int, routeId)
-        .input("sequenceOrder", sql.Int, checkpoint.sequenceOrder)
-        .input("address", sql.NVarChar, checkpoint.address)
-        .input("latitude", sql.Decimal(10, 6), checkpoint.lat)
-        .input("longitude", sql.Decimal(10, 6), checkpoint.lng)
-        .input("radius", sql.Int, checkpoint.radius)
-        .input("arrivalTime", sql.VarChar(8), checkpoint.arrivalTime)
+        .input("routeId", routeId)
+        .input("sequenceOrder", checkpoint.sequenceOrder)
+        .input("address", checkpoint.address)
+        .input("latitude", checkpoint.lat)
+        .input("longitude", checkpoint.lng)
+        .input("radius", checkpoint.radius)
+        .input("arrivalTime", checkpoint.arrivalTime)
         .query(`
           INSERT INTO route_checkpoints (
             route_id,
@@ -168,8 +169,8 @@ export async function POST(req: Request) {
     for (const userId of usersToClone) {
       await db
         .request()
-        .input("companyId", sql.Int, user.companyId)
-        .input("employeeId", sql.Int, userId)
+        .input("companyId", Number(user.companyId))
+        .input("employeeId", userId)
         .query(`
           UPDATE employee_routes
           SET is_active = 0
@@ -180,9 +181,9 @@ export async function POST(req: Request) {
 
       const clonedRouteResult = await db
         .request()
-        .input("companyId", sql.Int, user.companyId)
-        .input("employeeId", sql.Int, userId)
-        .input("createdBy", sql.Int, user.userId)
+        .input("companyId", Number(user.companyId))
+        .input("employeeId", userId)
+        .input("createdBy", Number(user.userId))
         .query(`
           INSERT INTO employee_routes (
             company_id,
@@ -201,18 +202,18 @@ export async function POST(req: Request) {
           )
         `);
 
-      const clonedRouteId = clonedRouteResult.recordset[0]?.id;
+      const clonedRouteId = Number(clonedRouteResult.recordset[0]?.id);
 
       for (const checkpoint of normalizedCheckpoints) {
         await db
           .request()
-          .input("routeId", sql.Int, clonedRouteId)
-          .input("sequenceOrder", sql.Int, checkpoint.sequenceOrder)
-          .input("address", sql.NVarChar, checkpoint.address)
-          .input("latitude", sql.Decimal(10, 6), checkpoint.lat)
-          .input("longitude", sql.Decimal(10, 6), checkpoint.lng)
-          .input("radius", sql.Int, checkpoint.radius)
-          .input("arrivalTime", sql.VarChar(8), checkpoint.arrivalTime)
+          .input("routeId", clonedRouteId)
+          .input("sequenceOrder", checkpoint.sequenceOrder)
+          .input("address", checkpoint.address)
+          .input("latitude", checkpoint.lat)
+          .input("longitude", checkpoint.lng)
+          .input("radius", checkpoint.radius)
+          .input("arrivalTime", checkpoint.arrivalTime)
           .query(`
             INSERT INTO route_checkpoints (
               route_id,

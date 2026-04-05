@@ -65,9 +65,11 @@ export async function getAuthUser(): Promise<AuthUser | null> {
     const { payload } = await jwtVerify(token, secret);
     console.log("[getAuthUser] decoded auth payload:", payload);
 
+    const normalizedRole = (payload.role ?? payload.roleCode) as AuthUser["role"] | undefined;
+
     return {
       userId: payload.userId as number,
-      role: payload.role as AuthUser["role"],
+      role: normalizedRole ?? "employee",
       email: payload.email as string,
 
       // 🔥 Isolation-safe
